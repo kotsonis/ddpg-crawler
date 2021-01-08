@@ -86,9 +86,11 @@ class DPG():
             os.path.join(save_dir, 'actor_target_net.pth')))
         
 
-    def step(self, state, action, reward, next_state, done):
+    def step(self, state, action, reward, next_state, done, frame):
         """Process one step of Agent/environment interaction"""
 
+        # add frame/maximum frames to reward
+        reward = np.array(reward) + frame/10000
         # Save experience / reward
         self.memory.add(state,action,reward,next_state,done)
         self.t_step += 1
@@ -167,7 +169,7 @@ class DPG():
         self.soft_update(self.actor, self.actor_target, self.tau)
         
         # ------------------- hard update target networks ---------------------- #
-        if (((self.train_step +1) % 20) == 0): 
+        if (((self.train_step +1) % 200) == 0): 
             self.soft_update(self.critic, self.critic_target, 1.0)
             self.soft_update(self.actor, self.actor_target, 1.0)
             

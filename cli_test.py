@@ -18,11 +18,11 @@ hyper_params.PER_batch_size = 32
 num_agents = hyper_params.num_agents
 action_size = hyper_params.action_size
 brain_name = hyper_params.brain_name
-n_episodes = 2000
+n_episodes = 5000
 n_frames = 1000
 hyper_params.update_every = 2
-hyper_params.eps_start = 0.9
-hyper_params.epsilon_min = 1e-4
+hyper_params.eps_start = 0.5
+hyper_params.epsilon_min = 1e-2
 solution = 30
 solution_found = False
 
@@ -52,7 +52,8 @@ for i_episode in range(1, n_episodes+1):
         rewards = env_info.rewards                        # get reward (for each agent)
         
         dones = env_info.local_done                       # see if episode finished
-        agent.step(states, actions, rewards, next_states, dones)
+        agent.step(states, actions, rewards, next_states, dones, frames
+        )
         agent_scores += rewards                           # update the score (for each agent)
         states = next_states                              # roll over states to next time step
         frames = frames+1
