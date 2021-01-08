@@ -11,19 +11,19 @@ class Configuration():
         self.gamma = 0.99
         self.soft_update_tau = 1e-3
         self.eps_start = 0.99
-        self.eps_decay_rate = 0.999
+        self.eps_decay_rate = 0.9995
         self.epsilon_min = 1e-4
         self.PER_batch_size = 64
         self.PER_alpha = 0.6
         self.n_step = 3
-        self.PER_buffer = 10e6
+        self.PER_buffer = 1e6
         self.critic_state_layers = 1
         self.critic_action_layers = 3
         self.critic_hidden_units = 256
         self.PER_eps = 1e-05
         self.reacher_location = './Reacher_Windows_x86_64/Reacher.exe'
         self.PER_beta_start = 0.4
-        self.PER_beta_decay = 0.00025/4.0
+        self.PER_beta_decay = 0.000025/4.0
         self.PER_beta_max = 1.0
         self.update_every = 4
 
@@ -40,6 +40,7 @@ class Configuration():
         env_info = env.reset(train_mode=True)[self.brain_name]
         self.num_agents = len(env_info.agents)
         self.action_size = self.brain.vector_action_space_size
+        print(self.brain)
         states = env_info.vector_observations
         self.state_size = states.shape[1]
         return

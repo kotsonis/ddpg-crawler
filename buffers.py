@@ -139,7 +139,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         assert len(idxes) == len(priorities)
         
         for idx, priority in zip(idxes, priorities):
-            assert priority > 0
+            assert priority > 0, print("error: priority is now: {}".format(priority))
             assert 0 <= idx < len(self._buffer)
             self._st_sum[idx] = priority ** self._alpha     # update value and parent values in sum-tree
             self._st_min[idx] = priority ** self._alpha     # update value and parent values in min-tree

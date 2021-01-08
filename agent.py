@@ -135,6 +135,7 @@ class DPG():
         # --------------=------ get current Q value ---------------------------- #
         q_online = self.critic(states.view(-1,self.state_size),actions.view(-1,self.action_size))
 
+    
         # --------------------- compute critic loss ---------------------------- #
         #  = mean(IS_weights * MSE(Q))    
         critic_loss = (weights*((q_target-q_online)**2).view(-1,self.batch_size,1)).mean()
@@ -157,14 +158,19 @@ class DPG():
         # we do not want this to enter into computation graph for autograd
         with torch.no_grad():
             td_error = (q_target - q_online).abs().view(self.batch_size,-1,1)
-            new_p = td_error.mean(axis=1).squeeze()+ self.PER_eps
+            new_p = td_error.mean(axis=1).squeeze().add(self.PER_eps)
             # -------------------- update PER priorities ----------------------- #
             self.memory.update_priorities(indices, new_p.cpu().data.numpy().tolist())
         
-        # ----------------------- update target networks ----------------------- #
+        # -------------------- soft update target networks --------------------- #
         self.soft_update(self.critic, self.critic_target, self.tau)
         self.soft_update(self.actor, self.actor_target, self.tau)
         
+        # ------------------- hard update target networks ---------------------- #
+        if (((self.train_step +1) % 20) == 0): 
+            self.soft_update(self.critic, self.critic_target, 1.0)
+            self.soft_update(self.actor, self.actor_target, 1.0)
+            
         # ------------------- update noise and exploration --------------------- #
         self.eps *= self.eps_decay
         self.eps = max(self.eps, self.eps_min)

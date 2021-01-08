@@ -15,10 +15,11 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.state_size = state_size
         self.action_size = action_size
-        self.state_fc = nn.Linear(state_size, 256)
-        self.bn1 = nn.BatchNorm1d(256)
-        self.state_fc1 = nn.Linear(256,256)
+        self.state_fc = nn.Linear(state_size, 512)
+        self.bn1 = nn.BatchNorm1d(512)
+        self.state_fc1 = nn.Linear(512,256)
         self.layer_2 = nn.Linear(256, 128)
+        #self.bn2 = nn.BatchNorm1d(128)
         self.layer_3 = nn.Linear(128, action_size)
         self.reset_parameters()
         return
@@ -27,12 +28,13 @@ class Actor(nn.Module):
         self.state_fc.weight.data.uniform_(*hidden_init(self.state_fc))
         self.state_fc1.weight.data.uniform_(*hidden_init(self.state_fc1))
         self.layer_2.weight.data.uniform_(*hidden_init(self.layer_2))
-        self.layer_3.weight.data.uniform_(-3e-3, 3e-3)
+        self.layer_3.weight.data.uniform_(*hidden_init(self.layer_3))
 
     def forward(self, states):
         x = F.leaky_relu(self.bn1(self.state_fc(states)))
         x = F.leaky_relu(self.state_fc1(x))
         x = F.leaky_relu(self.layer_2(x))
+        #x = F.leaky_relu(self.bn2(self.layer_2(x)))
         return torch.tanh(self.layer_3(x))
 
 class Critic(nn.Module):
@@ -40,11 +42,12 @@ class Critic(nn.Module):
         super(Critic, self).__init__()
         self.state_size = state_size
         self.action_size = action_size
-        self.state_fc = nn.Linear(state_size, 256)
-        self.bn1 = nn.BatchNorm1d(256)
-        self.state_fc1 = nn.Linear(256,256)
-        self.value_fc1 = nn.Linear(256 +action_size, 128)
-        #self.value_fc2 = nn.Linear(256,128)
+        self.state_fc = nn.Linear(state_size, 512)
+        self.bn1 = nn.BatchNorm1d(512)
+        self.state_fc1 = nn.Linear(512,256)
+        self.value_fc1 = nn.Linear(256 +action_size, 256)
+        self.value_fc2 = nn.Linear(256,128)
+        #self.bn2 = nn.BatchNorm1d(128)
         self.output_fc = nn.Linear(128,1)
         self.reset_parameters()
         return
@@ -53,16 +56,17 @@ class Critic(nn.Module):
         self.state_fc.weight.data.uniform_(*hidden_init(self.state_fc))
         self.state_fc1.weight.data.uniform_(*hidden_init(self.state_fc1))
         self.value_fc1.weight.data.uniform_(*hidden_init(self.value_fc1))
-        #self.value_fc2.weight.data.uniform_(*hidden_init(self.value_fc2))
+        self.value_fc2.weight.data.uniform_(*hidden_init(self.value_fc2))
         
-        self.output_fc.weight.data.uniform_(-3e-3, 3e-3)
+        self.output_fc.weight.data.uniform_(*hidden_init(self.output_fc))
 
     def forward(self, states, action):
         xs = F.leaky_relu(self.bn1(self.state_fc(states)))
         xs = F.leaky_relu(self.state_fc1(xs))
         x = torch.cat((xs, action), dim=1)
         x = F.leaky_relu(self.value_fc1(x))
-        #x = F.leaky_relu(self.value_fc2(x))
+        x = F.leaky_relu(self.value_fc2(x))
+        #x = F.leaky_relu(self.bn2(self.value_fc2(x)))
         return self.output_fc(x)
 
 

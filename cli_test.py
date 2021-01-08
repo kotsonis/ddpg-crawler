@@ -9,25 +9,30 @@ import config as config
 from agent import DPG
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-# env = UnityEnvironment(file_name='../../deep-reinforcement-learning/p2_continuous-control/Crawler_Windows_x86_64/Crawler.exe')
-env = UnityEnvironment(file_name='../../deep-reinforcement-learning/p2_continuous-control/Reacher_Windows_x86_64/Reacher.exe')
+env = UnityEnvironment(file_name='../../deep-reinforcement-learning/p2_continuous-control/Crawler_Windows_x86_64/Crawler.exe')
+#env = UnityEnvironment(file_name='../../deep-reinforcement-learning/p2_continuous-control/Reacher_Windows_x86_64/Reacher.exe')
 hyper_params = config.Configuration()
 hyper_params.process_env(env)
-hyper_params.n_step = 5 
-hyper_params.PER_batch_size = 64
+hyper_params.n_step = 75
+hyper_params.PER_batch_size = 32
 num_agents = hyper_params.num_agents
 action_size = hyper_params.action_size
 brain_name = hyper_params.brain_name
-n_episodes = 200
-hyper_params.update_every = 4
-hyper_params.epsilon_min = 5e-3
+n_episodes = 2000
+n_frames = 1000
+hyper_params.update_every = 2
+hyper_params.eps_start = 0.9
+hyper_params.epsilon_min = 1e-4
 solution = 30
 solution_found = False
 
 # create DPG Actor/Critic Agent
 agent = DPG(hyper_params)
 hyper_params.model_dir = "./model/"
-# agent.load_models(hyper_params.model_dir)
+if (hyper_params.model_dir) :
+    if not os.path.exists(hyper_params.model_dir):
+            os.makedirs(hyper_params.model_dir)
+#agent.load_models(hyper_params.model_dir)
 scores = []                                 # list containing scores from each episode
 scores_window = deque(maxlen=100)           # last 100 scores
 
@@ -39,11 +44,13 @@ for i_episode in range(1, n_episodes+1):
     states = env_info.vector_observations             # get the current state of each agent
     agent_scores = np.zeros(num_agents)
     frames = 0
-    while True:
+    for _ in range(n_episodes):
         actions = agent.act(states)
         env_info = env.step(actions)[brain_name]          # send all actions to tne environment
         next_states = env_info.vector_observations        # get next state (for each agent)
+        
         rewards = env_info.rewards                        # get reward (for each agent)
+        
         dones = env_info.local_done                       # see if episode finished
         agent.step(states, actions, rewards, next_states, dones)
         agent_scores += rewards                           # update the score (for each agent)
@@ -56,8 +63,9 @@ for i_episode in range(1, n_episodes+1):
     scores.append(np.mean(agent_scores))              # store episodes mean reward over agents
     scores_window.append(np.mean(agent_scores))       # save most recent score
     
-    if i_episode % 10 == 0:
+    if i_episode % 100 == 0:
         print('\rEpisodes: {}\tAverage Score: {:.2f}\t\t'.format(i_episode, np.mean(scores_window)))
+        agent.save_models(hyper_params.model_dir)
     if np.mean(scores_window)>=solution:
         if ( not solution_found):
             print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode-100, np.mean(scores_window)))
