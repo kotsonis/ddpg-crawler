@@ -86,11 +86,11 @@ class DPG():
             os.path.join(save_dir, 'actor_target_net.pth')))
         
 
-    def step(self, state, action, reward, next_state, done, frame):
+    def step(self, state, action, reward, next_state, done):
         """Process one step of Agent/environment interaction"""
 
         # add frame/maximum frames to reward
-        reward = np.array(reward) + frame/10000
+        
         # Save experience / reward
         self.memory.add(state,action,reward,next_state,done)
         self.t_step += 1
@@ -99,6 +99,7 @@ class DPG():
             # If enough samples are available in memory, perform a learning step
             if len(self.memory) > self.batch_size:
                 self.learn()
+        return self.train_step
 
     def act(self,states, add_noise=True):
         """ act according to target policy based on state """

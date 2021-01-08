@@ -25,6 +25,7 @@ hyper_params.eps_start = 0.5
 hyper_params.epsilon_min = 1e-2
 solution = 30
 solution_found = False
+total_train_steps = 1e6
 
 # create DPG Actor/Critic Agent
 agent = DPG(hyper_params)
@@ -38,13 +39,15 @@ scores_window = deque(maxlen=100)           # last 100 scores
 
 agent_scores = np.zeros(num_agents)                          # initialize the score (for each agent)
 frames = 0
-
-for i_episode in range(1, n_episodes+1):
+i_episode = 0
+t_step = 0
+while t_step < total_train_steps:
+    i_episode += 1
     env_info = env.reset(train_mode=True)[brain_name] # reset the environment
     states = env_info.vector_observations             # get the current state of each agent
     agent_scores = np.zeros(num_agents)
     frames = 0
-    for _ in range(n_episodes):
+    while True: # each frame
         actions = agent.act(states)
         env_info = env.step(actions)[brain_name]          # send all actions to tne environment
         next_states = env_info.vector_observations        # get next state (for each agent)
@@ -52,8 +55,7 @@ for i_episode in range(1, n_episodes+1):
         rewards = env_info.rewards                        # get reward (for each agent)
         
         dones = env_info.local_done                       # see if episode finished
-        agent.step(states, actions, rewards, next_states, dones, frames
-        )
+        t_step = agent.step(states, actions, rewards, next_states, dones)
         agent_scores += rewards                           # update the score (for each agent)
         states = next_states                              # roll over states to next time step
         frames = frames+1
