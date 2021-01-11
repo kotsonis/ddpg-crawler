@@ -192,7 +192,7 @@ class DPG():
         self.critic_optimizer.step()
         # ---------------------- compute actor loss ---------------------------- #
         # we want maximum reward (Q) so loss is negative of current Q
-        noise = torch.tensor(np.random.normal(size= (rewards.shape[0], num_atoms, 1)),dtype=torch.float)  #todo, add how many taus we want.. # SDPG specific
+        # noise = torch.tensor(np.random.normal(size= (rewards.shape[0], num_atoms, 1)),dtype=torch.float)  #todo, add how many taus we want.. # SDPG specific
         
         actor_loss = -self.critic(states, self.actor(states), q_hat_sample_noise).sum(dim=-1).mean()
         # --------------------- optimize the actor ----------------------------- #
@@ -204,24 +204,24 @@ class DPG():
         # -------------- update priorities in the replay buffer ---------------- #
         # calculate TD_error
         # we do not want this to enter into computation graph for autograd
-        #with torch.no_grad():
-            #td_error = (loss).abs()
+        with torch.no_grad():
+            td_error = loss.abs()
             # td_error = error_loss.view(batch_size,-1)
             #td_error = td_error.mean(axis=1)
         #    td_error = loss.view(batch_size,-1).mean(axis=1).abs()
-        #    new_p = td_error + self.PER_eps
+            new_p = td_error + self.PER_eps
             # -------------------- update PER priorities ----------------------- #
-        #    self.memory.update_priorities(indices, new_p.cpu().data.numpy().tolist())
+            self.memory.update_priorities(indices, new_p.cpu().data.numpy().tolist())
         
         # -------------------- soft update target networks --------------------- #
         self.soft_update(self.critic, self.critic_target, self.tau)
         self.soft_update(self.actor, self.actor_target, self.tau)
         
         # ------------------- hard update target networks ---------------------- #
-        """if (((self.train_step +1) % 200) == 0): 
+        if (((self.train_step +1) % 200) == 0): 
             self.soft_update(self.critic, self.critic_target, 1.0)
             self.soft_update(self.actor, self.actor_target, 1.0)
-        """    
+            
         # ------------------- update noise and exploration --------------------- #
         self.eps *= self.eps_decay
         self.eps = max(self.eps, self.eps_min)

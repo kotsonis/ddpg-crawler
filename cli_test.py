@@ -9,12 +9,13 @@ import config as config
 from agent import DPG
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-#env = UnityEnvironment(file_name='../../deep-reinforcement-learning/p2_continuous-control/Crawler_Windows_x86_64/Crawler.exe')
-env = UnityEnvironment(file_name='../../deep-reinforcement-learning/p2_continuous-control/Reacher_Windows_x86_64/Reacher.exe', worker_id=1)
+env = UnityEnvironment(file_name='../../deep-reinforcement-learning/p2_continuous-control/Crawler_Windows_x86_64/Crawler.exe')
+#env = UnityEnvironment(file_name='../../deep-reinforcement-learning/p2_continuous-control/Reacher_Windows_x86_64/Reacher.exe', worker_id=1)
 hyper_params = config.Configuration()
 hyper_params.process_env(env)
 hyper_params.n_step = 5
 hyper_params.PER_batch_size = 128 #16
+#hyper_params.PER_batch_size = 2 #16
 num_agents = hyper_params.num_agents
 action_size = hyper_params.action_size
 brain_name = hyper_params.brain_name
@@ -24,9 +25,10 @@ hyper_params.update_every = 4
 hyper_params.eps_start = 0.95
 hyper_params.epsilon_min = 1e-4 # 1e-2
 hyper_params.eps_decay_rate = 0.999
+#hyper_params.num_atoms = 5
 hyper_params.num_atoms = 51
-hyper_params.dense1_size = 256 #400
-hyper_params.dense2_size = 128 #300
+hyper_params.dense1_size = 400 #256 #400
+hyper_params.dense2_size = 300 #128 #300
 solution = 31
 solution_found = False
 total_train_steps = 5e4
