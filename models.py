@@ -37,6 +37,82 @@ class Actor(nn.Module):
         #x = F.leaky_relu(self.bn2(self.layer_2(x)))
         return torch.tanh(self.layer_3(x))
 
+class Actor_SDPG(nn.Module):
+    def __init__(self, state_size, action_size, dense1_size, dense2_size):
+        super(Actor_SDPG,self).__init__()
+        self.state_size = state_size
+        self.action_size = action_size
+        self.dense1 = nn.Linear(state_size, dense1_size)
+        self.batchnorm = nn.BatchNorm1d(state_size)
+        self.dense2 = nn.Linear(dense1_size, dense2_size)
+        self.output_fc = nn.Linear(dense2_size,action_size)
+        self.reset_parameters()
+        return
+
+    def reset_parameters(self):
+        self.dense1.weight.data.uniform_(*hidden_init(self.dense1))
+        self.dense2.weight.data.uniform_(*hidden_init(self.dense2))
+        self.output_fc.weight.data.uniform_(*hidden_init(self.output_fc))
+        return
+    def forward(self, states):
+        x = F.leaky_relu(self.dense1(self.batchnorm(states)))
+        x = F.leaky_relu(self.dense2(x))
+        x = torch.tanh(self.output_fc(x))
+        # Scale tanh output to lower and upper action bounds
+		# x = 0.5*((self.action_bound_high+self.action_bound_low) + x*(self.action_bound_high-self.action_bound_low))
+        return x
+
+class Critic_SDPG(nn.Module):
+    def __init__(self, state_size, action_size, dense1_size, dense2_size, num_atoms, scope='critic'):
+        super(Critic_SDPG, self).__init__()
+        # self.v_min = v_min
+        # self.v_max = v_max
+        self.scope = scope
+        self.state_size = state_size
+        self.action_size = action_size
+        self.dense1_size = dense1_size
+        self.dense2_size = dense2_size
+        self.num_atoms = num_atoms
+        #self.phi_embedding_size = phi_embedding_size
+        self.dense1 = nn.Linear(state_size, dense1_size)
+        self.batchnorm = nn.BatchNorm1d(state_size)
+        self.dense2a = nn.Linear(dense1_size, dense2_size)
+        self.dense2b = nn.Linear(action_size, dense2_size)
+        self.dense2c = nn.Linear(1, dense2_size)
+        self.dense3 = nn.Linear(dense2_size, dense2_size)
+        self.output_fc = nn.Linear(dense2_size,1)
+        self.reset_parameters()
+        return
+
+    def reset_parameters(self):
+        self.dense1.weight.data.uniform_(*hidden_init(self.dense1))
+        self.dense2a.weight.data.uniform_(*hidden_init(self.dense2a))
+        self.dense2b.weight.data.uniform_(*hidden_init(self.dense2b))
+        self.dense2c.weight.data.uniform_(*hidden_init(self.dense2c))
+        self.dense3.weight.data.uniform_(*hidden_init(self.dense3))
+        self.output_fc.weight.data.uniform_(*hidden_init(self.output_fc))
+        return
+    
+    def forward(self, states, actions, samples ):
+        xs = F.leaky_relu(self.dense1(self.batchnorm(states)))
+        xs = self.dense2a(xs)
+        xs.unsqueeze_(1)
+        xa = self.dense2b(actions)
+        xa.unsqueeze_(1)
+        #x = torch.add(xs,xa)
+        x_s = self.dense2c(samples).view(-1,self.num_atoms,self.dense2_size)
+        #x = torch.add(x, x_s)
+        x = F.leaky_relu(self.dense3(xs+xa+x_s)).view(-1,self.dense2_size)
+        # self.dense2 = tf.reshape(self.dense2, [batch_size*num_atoms, dense2_size])
+        
+        x = self.output_fc(x)
+        # scale the output samples 
+        # self.output_samples = 0.5 * (x*(self.v_max - self.v_min)+ (self.v_max + self.v_min))
+        return x.view(-1,self.num_atoms)
+        # self.output_samples = tf.reshape(self.output_samples, [batch_size, num_atoms])
+
+        # self.Q_val = tf.reduce_mean(self.output_samples, axis=1) # the Q value is the mean of the generated samples        
+        
 class Critic(nn.Module):
     def __init__(self, state_size, action_size):
         super(Critic, self).__init__()

@@ -26,7 +26,9 @@ class Configuration():
         self.PER_beta_decay = 0.000025/4.0
         self.PER_beta_max = 1.0
         self.update_every = 4
-
+        self.num_atoms = 51
+        self.dense1_size = 400
+        self.dense2_size = 300
         self.log_dir = '.'
         self.model_dir = False
         self.plt_file = False
@@ -40,7 +42,6 @@ class Configuration():
         env_info = env.reset(train_mode=True)[self.brain_name]
         self.num_agents = len(env_info.agents)
         self.action_size = self.brain.vector_action_space_size
-        print(self.brain)
         states = env_info.vector_observations
         self.state_size = states.shape[1]
         return
