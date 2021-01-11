@@ -136,13 +136,13 @@ class DPG():
         
         # in case we have stored a multi-agent experience, we unroll the S,A,R,S,done, gammas
         batch_size = states.shape[0]
-        states = states.view(-1,self.state_size)
+        """ states = states.view(-1,self.state_size)
         actions = actions.view(-1,self.action_size)
         rewards = rewards.view(-1,1)
         next_states = next_states.view(-1,self.state_size)
         dones = dones.view(-1,1)
         gammas = gammas.view(-1,1)
-
+        """
         # decay beta for next sampling (Prioritized Experience Replay related)
         self.beta = min(self.beta+self.beta_step, self.beta_max)
         
@@ -152,15 +152,19 @@ class DPG():
     
         # sample from gaussian distribution for future_q sampling
         # size : size=[train_params.BATCH_SIZE, train_params.NUM_ATOMS, train_params.NOISE_DIMS]
-        q_sample_noise = torch.tensor(np.random.normal(size= (rewards.shape[0], num_atoms, 1)),dtype=torch.float)  #todo, add how many taus we want.. # SDPG specific
-        q_hat_sample_noise = torch.tensor(np.random.normal(size= (rewards.shape[0], num_atoms, 1)),dtype=torch.float)  #todo, add how many taus we want.. # SDPG specific
+        q_sample_noise = torch.tensor(np.random.normal(size= (batch_size, num_atoms, 1)),dtype=torch.float)  #todo, add how many taus we want.. # SDPG specific
+        q_hat_sample_noise = torch.tensor(np.random.normal(size= (batch_size, num_atoms, 1)),dtype=torch.float)  #todo, add how many taus we want.. # SDPG specific
         q_future_state = self.critic_target(next_states, future_action, q_sample_noise)     # SDPG specific
-        
-        q_target = rewards + (1-dones)*gammas*q_future_state
+        # future value is 0 if episode is done
+        q_future_state *= (1-dones) 
+        q_target = rewards + gammas*q_future_state
 
         # def train_step(self, real_samples,  IS_weights, learn_rate, l2_lambda, num_atoms):
         # --------------=------ get current Q value ---------------------------- #
         q_online = self.critic(states,actions, q_hat_sample_noise)
+        with torch.no_grad():
+            td_error = torch.mean(q_target, dim=1)
+            td_error -= torch.mean(q_online, dim=1)
 
         #q_target_sorted_indexes = torch.argsort(q_target, dim=-1)
         q_target_sorted, _ = torch.sort(q_target,dim=1)
@@ -178,7 +182,7 @@ class DPG():
         max_tau = (2*num_atoms+1)/(2*num_atoms)
         tau = torch.arange(start=min_tau, end=max_tau, step= 1/num_atoms).unsqueeze(0)
         inv_tau = 1.0 - tau
-        loss = torch.where(error_loss.lt(0.0), inv_tau * huber_loss, tau * huber_loss).mean(axis=-1).sum(dim=-1)
+        loss = torch.where(error_loss.lt(0.0), inv_tau * huber_loss, tau * huber_loss).sum(dim=2).mean(dim=1)
         # loss = torch.sum(torch.mean(loss,dim=-1),dim=-1)
         critic_loss = (weights*loss.view(batch_size,-1)).mean()
         #critic_loss = critic_loss.mean()
@@ -194,7 +198,8 @@ class DPG():
         # we want maximum reward (Q) so loss is negative of current Q
         # noise = torch.tensor(np.random.normal(size= (rewards.shape[0], num_atoms, 1)),dtype=torch.float)  #todo, add how many taus we want.. # SDPG specific
         
-        actor_loss = -self.critic(states, self.actor(states), q_hat_sample_noise).sum(dim=-1).mean()
+        actor_loss = -self.critic(states, self.actor(states), q_hat_sample_noise).mean(dim=1)
+        actor_loss = torch.mean(actor_loss)
         # --------------------- optimize the actor ----------------------------- #
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
@@ -205,7 +210,7 @@ class DPG():
         # calculate TD_error
         # we do not want this to enter into computation graph for autograd
         with torch.no_grad():
-            td_error = loss.abs()
+            td_error = td_error.abs()
             # td_error = error_loss.view(batch_size,-1)
             #td_error = td_error.mean(axis=1)
         #    td_error = loss.view(batch_size,-1).mean(axis=1).abs()

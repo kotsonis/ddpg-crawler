@@ -32,6 +32,7 @@ class Configuration():
         self.log_dir = '.'
         self.model_dir = False
         self.plt_file = False
+        self.n_episodes = 5
         
         return
     

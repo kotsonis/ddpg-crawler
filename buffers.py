@@ -168,7 +168,8 @@ class nStepPER(PrioritizedReplayBuffer):
                 reward_t = reward_t+ gamma*next_rewards
                 gamma = gamma*self.gamma
             gammas = np.ones(np.array(reward_t).shape)*gamma
-            for i in range(len(state_t)):
+            #super().add(state_t, action_t, reward_t, next_state_N, done_N, gammas)
+            for i in range(len(state_t)): 
                 super().add(state_t[i],action_t[i],reward_t[i],next_state_N[i],done_N[i], gammas[i])
         if np.any(done_N):
             while (len(self.returns) > 0):
@@ -179,7 +180,8 @@ class nStepPER(PrioritizedReplayBuffer):
                     reward_t = reward_t+ gamma*next_rewards
                     gamma = gamma*self.gamma
                 gammas = np.ones(np.array(reward_t).shape)*gamma
-                for i in range(len(state_t)):
+                #super().add(state_t, action_t, reward_t, next_state_N, done_N, gammas)
+                for i in range(len(state_t)): 
                     super().add(state_t[i],action_t[i],reward_t[i],next_state_N[i],done_N[i], gammas[i])
         return
 
