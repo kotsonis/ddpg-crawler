@@ -31,7 +31,7 @@ hyper_params.dense1_size = 400 #256 #400
 hyper_params.dense2_size = 300 #128 #300
 solution = 31
 solution_found = False
-total_train_steps = 5e4
+total_train_steps = 5e5
 
 # create DPG Actor/Critic Agent
 agent = DPG(hyper_params)
