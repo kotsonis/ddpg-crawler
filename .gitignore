@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Unity environments
+Reacher_Windows_x86_64/
+
+# vs-code
+.vscode/

@@ -18,7 +18,7 @@ def tile(a, dim, n_tile):
     repeat_idx = [1] * a.dim()
     repeat_idx[dim] = n_tile
     a = a.repeat(*(repeat_idx))
-    order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)]))
+    order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)])).to(device)
     return torch.index_select(a, dim, order_index)
 
 class DPG():
@@ -104,6 +104,7 @@ class DPG():
         self.memory.add(state,action,reward,next_state,done)
         self.t_step += 1
          # Learn every UPDATE_EVERY time steps.
+        if (self.t_step < 2000) : return self.train_step
         if (self.t_step + 1) % self.update_every == 0:
             # If enough samples are available in memory, perform a learning step
             if len(self.memory) > self.batch_size:
@@ -152,8 +153,8 @@ class DPG():
     
         # sample from gaussian distribution for future_q sampling
         # size : size=[train_params.BATCH_SIZE, train_params.NUM_ATOMS, train_params.NOISE_DIMS]
-        q_sample_noise = torch.tensor(np.random.normal(size= (rewards.shape[0], num_atoms, 1)),dtype=torch.float)  #todo, add how many taus we want.. # SDPG specific
-        q_hat_sample_noise = torch.tensor(np.random.normal(size= (rewards.shape[0], num_atoms, 1)),dtype=torch.float)  #todo, add how many taus we want.. # SDPG specific
+        q_sample_noise = torch.tensor(np.random.normal(size= (rewards.shape[0], num_atoms, 1)),dtype=torch.float).to(device)  #todo, add how many taus we want.. # SDPG specific
+        q_hat_sample_noise = torch.tensor(np.random.normal(size= (rewards.shape[0], num_atoms, 1)),dtype=torch.float).to(device)  #todo, add how many taus we want.. # SDPG specific
         q_future_state = self.critic_target(next_states, future_action, q_sample_noise)     # SDPG specific
         # future value is 0 if episode is done
         q_future_state *= (1-dones) 
@@ -162,9 +163,7 @@ class DPG():
         # def train_step(self, real_samples,  IS_weights, learn_rate, l2_lambda, num_atoms):
         # --------------=------ get current Q value ---------------------------- #
         q_online = self.critic(states,actions, q_hat_sample_noise)
-        with torch.no_grad():
-            td_error = torch.mean(q_target, dim=1)
-            td_error -= torch.mean(q_online, dim=1)
+        
 
         #q_target_sorted_indexes = torch.argsort(q_target, dim=-1)
         q_target_sorted, _ = torch.sort(q_target,dim=1)
@@ -172,6 +171,8 @@ class DPG():
         #q_online_sorted_indexes = torch.argsort(q_online, dim=-1)
         #q_online_sorted = torch.gather(q_online, index=q_online_sorted_indexes, dim=-1)
         q_online_sorted, _ = torch.sort(q_online, dim=1)
+        #q_target_tile = torch.tile(q_target_sorted.unsqueeze(-2),(1,1,num_atoms))
+        #q_online_tile = torch.tile(q_online_sorted.unsqueeze(-1),(1,num_atoms,1))
         q_target_tile = tile(q_target_sorted.unsqueeze(-2),-2,num_atoms)
         q_online_tile = tile(q_online_sorted.unsqueeze(-1),-1,num_atoms)
 
@@ -180,11 +181,11 @@ class DPG():
         
         min_tau = 1/(2*num_atoms)
         max_tau = (2*num_atoms+1)/(2*num_atoms)
-        tau = torch.arange(start=min_tau, end=max_tau, step= 1/num_atoms).unsqueeze(0)
+        tau = torch.arange(start=min_tau, end=max_tau, step= 1/num_atoms, device=device).unsqueeze(0)
         inv_tau = 1.0 - tau
-        inv_huber = torch.matmul(inv_tau, huber_loss)
-        huber = torch.matmul(tau, huber_loss)
-        loss = torch.where(error_loss.lt(0.0), inv_huber, huber)
+        #inv_huber = torch.matmul(inv_tau, huber_loss)
+        #huber = torch.matmul(tau, huber_loss)
+        loss = torch.where(error_loss.lt(0.0), inv_tau * huber_loss, tau*huber_loss)
         loss = loss.mean(dim=2)
         loss = loss.sum(dim=1)
         # loss = torch.sum(torch.mean(loss,dim=-1),dim=-1)
@@ -203,12 +204,12 @@ class DPG():
         # we want maximum reward (Q) so loss is negative of current Q
         # noise = torch.tensor(np.random.normal(size= (rewards.shape[0], num_atoms, 1)),dtype=torch.float)  #todo, add how many taus we want.. # SDPG specific
         
-        actor_loss = self.critic(states, self.actor(states), q_hat_sample_noise)
-        actor_loss = actor_loss.mean(dim=1)
-        actor_loss_batch = -actor_loss.sum()
+        actor_loss = - self.critic(states, self.actor(states), q_hat_sample_noise).mean(dim=1).mean()
+        #actor_loss = actor_loss.mean(dim=1)
+        #actor_loss_batch = -actor_loss.mean()
         # --------------------- optimize the actor ----------------------------- #
         self.actor_optimizer.zero_grad()
-        actor_loss_batch.backward()
+        actor_loss.backward()
         self.actor_optimizer.step()
         
         # --------------------- Prioritized Replay Buffer ---------------------- #
@@ -216,14 +217,16 @@ class DPG():
         # calculate TD_error
         # we do not want this to enter into computation graph for autograd
         with torch.no_grad():
+            td_error = torch.mean(q_target, dim=1)
+            td_error -= torch.mean(q_online, dim=1)
             td_error = td_error.abs().view(batch_size,-1)
             # td_error = error_loss.view(batch_size,-1)
-            td_error = td_error.mean(axis=1)
+            td_error = td_error.mean(dim=1)
         #    td_error = loss.view(batch_size,-1).mean(axis=1).abs()
             new_p = td_error + self.PER_eps
             
-            if (torch.any(torch.isnan(new_p))): 
-                print('priorities: got a NaN reward. Need to fix it. Priorities are : {}'.format(new_p))
+#            if (torch.any(torch.isnan(new_p))): 
+#                print('priorities: got a NaN reward. Need to fix it. Priorities are : {}'.format(new_p))
             # -------------------- update PER priorities ----------------------- #
             self.memory.update_priorities(indices, new_p.cpu().data.numpy().tolist())
         
@@ -232,7 +235,7 @@ class DPG():
         self.soft_update(self.actor, self.actor_target, self.tau)
         
         # ------------------- hard update target networks ---------------------- #
-        if (((self.train_step +1) % 200) == 0): 
+        if (((self.train_step +1) % 1000) == 0): 
             self.soft_update(self.critic, self.critic_target, 1.0)
             self.soft_update(self.actor, self.actor_target, 1.0)
             

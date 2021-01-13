@@ -42,10 +42,10 @@ class Actor_SDPG(nn.Module):
         super(Actor_SDPG,self).__init__()
         self.state_size = state_size
         self.action_size = action_size
-        self.dense1 = nn.Linear(state_size, dense1_size)
-        self.batchnorm = nn.BatchNorm1d(state_size)
-        self.dense2 = nn.Linear(dense1_size, dense2_size)
-        self.output_fc = nn.Linear(dense2_size,action_size)
+        self.dense1 = nn.Linear(state_size, dense1_size).cuda()
+        self.batchnorm = nn.BatchNorm1d(state_size).cuda()
+        self.dense2 = nn.Linear(dense1_size, dense2_size).cuda()
+        self.output_fc = nn.Linear(dense2_size,action_size).cuda()
         self.reset_parameters()
         return
 
@@ -55,8 +55,9 @@ class Actor_SDPG(nn.Module):
         self.output_fc.weight.data.uniform_(*hidden_init(self.output_fc))
         return
     def forward(self, states):
-        x = states.view(-1,self.state_size)
-        x = F.leaky_relu(self.dense1(self.batchnorm(x)))
+        x = self.batchnorm(states.view(-1,self.state_size))
+        #x = F.leaky_relu(self.dense1(self.batchnorm(x)))
+        x = F.leaky_relu(self.dense1(x))
         x = F.leaky_relu(self.dense2(x))
         x = torch.tanh(self.output_fc(x))
         # Scale tanh output to lower and upper action bounds
@@ -75,14 +76,14 @@ class Critic_SDPG(nn.Module):
         self.dense2_size = dense2_size
         self.num_atoms = num_atoms
         #self.phi_embedding_size = phi_embedding_size
-        self.dense1 = nn.Linear(state_size, dense1_size)
-        self.batchnorm = nn.BatchNorm1d(state_size)
-        self.dense2a = nn.Linear(dense1_size+action_size, dense2_size)
-        self.dense2a_1 = nn.Linear(dense1_size, dense2_size)
-        self.dense2b = nn.Linear(action_size, dense2_size)
-        self.dense2c = nn.Linear(1, dense2_size)
-        self.dense3 = nn.Linear(dense2_size, dense2_size)
-        self.output_fc = nn.Linear(dense2_size,1)
+        self.dense1 = nn.Linear(state_size, dense1_size).cuda()
+        self.batchnorm = nn.BatchNorm1d(state_size).cuda()
+        #self.dense2a = nn.Linear(dense1_size+action_size, dense2_size).cuda()
+        self.dense2a = nn.Linear(dense1_size, dense2_size).cuda()
+        self.dense2b = nn.Linear(action_size, dense2_size).cuda()
+        self.dense2c = nn.Linear(1, dense2_size).cuda()
+        self.dense3 = nn.Linear(dense2_size, dense2_size).cuda()
+        self.output_fc = nn.Linear(dense2_size,1).cuda()
         self.reset_parameters()
         return
 
@@ -95,11 +96,11 @@ class Critic_SDPG(nn.Module):
         self.output_fc.weight.data.uniform_(*hidden_init(self.output_fc))
         return
     
-    """
+    
     def forward(self, states, actions, samples ):
         xs = states.view(-1,self.state_size)
         xs = F.leaky_relu(self.dense1(self.batchnorm(xs)))
-        xs = self.dense2a_1(xs)
+        xs = self.dense2a(xs)
         xs.unsqueeze_(1)
         xa = self.dense2b(actions)
         xa.unsqueeze_(1)
@@ -115,8 +116,9 @@ class Critic_SDPG(nn.Module):
         return x.view(-1,self.num_atoms)
     """
     def forward(self, states, actions, samples):
-        xs = states.view(-1,self.state_size)
-        xs = F.leaky_relu(self.dense1(self.batchnorm(xs)))
+        xs = self.batchnorm(states.view(-1,self.state_size))
+        #xs = F.leaky_relu(self.dense1(self.batchnorm(xs)))
+        xs = F.leaky_relu(self.dense1(xs))
         x = torch.cat((xs, actions), dim=1)
         x = F.leaky_relu(self.dense2a(x)).unsqueeze(1)
         xa = self.dense2c(samples).view(-1,self.num_atoms,self.dense2_size)
@@ -125,7 +127,7 @@ class Critic_SDPG(nn.Module):
         x = self.output_fc(x)
         #x = F.leaky_relu(self.value_fc2(x))
         return x.view(-1,self.num_atoms)
-    
+    """
 class Critic(nn.Module):
     def __init__(self, state_size, action_size):
         super(Critic, self).__init__()
