@@ -130,6 +130,7 @@ dmypy.json
 
 # Unity environments
 Reacher_Windows_x86_64/
+Crawler_Windows_x86_64/
 
 # vs-code
 .vscode/
