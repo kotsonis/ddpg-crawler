@@ -9,8 +9,8 @@ import config as config
 from agent import DPG
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-#env = UnityEnvironment(file_name='../../deep-reinforcement-learning/p2_continuous-control/Crawler_Windows_x86_64/Crawler.exe')
-env = UnityEnvironment(file_name='./Reacher_Windows_x86_64/Reacher.exe', worker_id=1, no_graphics=True)
+env = UnityEnvironment(file_name='./Crawler_Windows_x86_64/Crawler.exe')
+#env = UnityEnvironment(file_name='./Reacher_Windows_x86_64/Reacher.exe', worker_id=1, no_graphics=True)
 hyper_params = config.Configuration()
 hyper_params.process_env(env)
 hyper_params.n_step = 5
@@ -29,9 +29,9 @@ hyper_params.eps_decay_rate = 0.9999
 hyper_params.num_atoms = 51
 hyper_params.dense1_size = 400 #400
 hyper_params.dense2_size = 300 #300
-solution = 30
+solution = 1200
 solution_found = False
-total_train_steps = 1e6
+total_train_steps = 3e5
 #hyper_params.PER_beta_start = 0.6
 #hyper_params.PER_beta_decay = 0.025/4.0
 #hyper_params.PER_beta_max = 0.9
@@ -65,10 +65,12 @@ while t_step < total_train_steps:
         next_states = env_info.vector_observations        # get next state (for each agent)
         
         rewards = env_info.rewards                        # get reward (for each agent)
+        rewards = np.nan_to_num(rewards,nan=-5.0)
         if (np.any(np.isnan(rewards))): 
             print('got a NaN reward. Need to fix it.')
         
         dones = env_info.local_done                       # see if episode finished
+        rewards += np.array(dones)*-5.0
         t_step = agent.step(states, actions, rewards, next_states, dones)
         agent_scores += rewards                           # update the score (for each agent)
         states = next_states                              # roll over states to next time step
