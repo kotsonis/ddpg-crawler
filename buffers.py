@@ -139,7 +139,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         assert len(idxes) == len(priorities)
         
         for idx, priority in zip(idxes, priorities):
-            assert priority > 0, print("error: priority is now: {}".format(priority))
+            assert priority > 0, "priority must be greater than zero"
             assert 0 <= idx < len(self._buffer)
             self._st_sum[idx] = priority ** self._alpha     # update value and parent values in sum-tree
             self._st_min[idx] = priority ** self._alpha     # update value and parent values in min-tree
@@ -168,9 +168,9 @@ class nStepPER(PrioritizedReplayBuffer):
                 reward_t = reward_t+ gamma*next_rewards
                 gamma = gamma*self.gamma
             gammas = np.ones(np.array(reward_t).shape)*gamma
-            #super().add(state_t, action_t, reward_t, next_state_N, done_N, gammas)
-            for i in range(len(state_t)): 
-                super().add(state_t[i],action_t[i],reward_t[i],next_state_N[i],done_N[i], gammas[i])
+            super().add(state_t, action_t, reward_t, next_state_N, done_N, gammas)
+            #for i in range(len(state_t)): 
+            #    super().add(state_t[i],action_t[i],reward_t[i],next_state_N[i],done_N[i], gammas[i])
         if np.any(done_N):
             while (len(self.returns) > 0):
                 gamma = self.gamma
@@ -180,9 +180,9 @@ class nStepPER(PrioritizedReplayBuffer):
                     reward_t = reward_t+ gamma*next_rewards
                     gamma = gamma*self.gamma
                 gammas = np.ones(np.array(reward_t).shape)*gamma
-                #super().add(state_t, action_t, reward_t, next_state_N, done_N, gammas)
-                for i in range(len(state_t)): 
-                    super().add(state_t[i],action_t[i],reward_t[i],next_state_N[i],done_N[i], gammas[i])
+                super().add(state_t, action_t, reward_t, next_state_N, done_N, gammas)
+                #for i in range(len(state_t)): 
+                #    super().add(state_t[i],action_t[i],reward_t[i],next_state_N[i],done_N[i], gammas[i])
         return
 
 

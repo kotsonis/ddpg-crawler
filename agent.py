@@ -136,13 +136,13 @@ class DPG():
         
         # in case we have stored a multi-agent experience, we unroll the S,A,R,S,done, gammas
         batch_size = states.shape[0]
-        """ states = states.view(-1,self.state_size)
+        states = states.view(-1,self.state_size)
         actions = actions.view(-1,self.action_size)
         rewards = rewards.view(-1,1)
         next_states = next_states.view(-1,self.state_size)
         dones = dones.view(-1,1)
         gammas = gammas.view(-1,1)
-        """
+        
         # decay beta for next sampling (Prioritized Experience Replay related)
         self.beta = min(self.beta+self.beta_step, self.beta_max)
         
@@ -152,8 +152,8 @@ class DPG():
     
         # sample from gaussian distribution for future_q sampling
         # size : size=[train_params.BATCH_SIZE, train_params.NUM_ATOMS, train_params.NOISE_DIMS]
-        q_sample_noise = torch.tensor(np.random.normal(size= (batch_size, num_atoms, 1)),dtype=torch.float)  #todo, add how many taus we want.. # SDPG specific
-        q_hat_sample_noise = torch.tensor(np.random.normal(size= (batch_size, num_atoms, 1)),dtype=torch.float)  #todo, add how many taus we want.. # SDPG specific
+        q_sample_noise = torch.tensor(np.random.normal(size= (rewards.shape[0], num_atoms, 1)),dtype=torch.float)  #todo, add how many taus we want.. # SDPG specific
+        q_hat_sample_noise = torch.tensor(np.random.normal(size= (rewards.shape[0], num_atoms, 1)),dtype=torch.float)  #todo, add how many taus we want.. # SDPG specific
         q_future_state = self.critic_target(next_states, future_action, q_sample_noise)     # SDPG specific
         # future value is 0 if episode is done
         q_future_state *= (1-dones) 
@@ -182,9 +182,14 @@ class DPG():
         max_tau = (2*num_atoms+1)/(2*num_atoms)
         tau = torch.arange(start=min_tau, end=max_tau, step= 1/num_atoms).unsqueeze(0)
         inv_tau = 1.0 - tau
-        loss = torch.where(error_loss.lt(0.0), inv_tau * huber_loss, tau * huber_loss).sum(dim=2).mean(dim=1)
+        inv_huber = torch.matmul(inv_tau, huber_loss)
+        huber = torch.matmul(tau, huber_loss)
+        loss = torch.where(error_loss.lt(0.0), inv_huber, huber)
+        loss = loss.mean(dim=2)
+        loss = loss.sum(dim=1)
         # loss = torch.sum(torch.mean(loss,dim=-1),dim=-1)
-        critic_loss = (weights*loss.view(batch_size,-1)).mean()
+        critic_loss = (weights*loss.view(batch_size,-1))
+        critic_loss_batch = critic_loss.mean()
         #critic_loss = critic_loss.mean()
         # --------------------- compute critic loss ---------------------------- #
         #  = mean(IS_weights * MSE(Q))    
@@ -192,17 +197,18 @@ class DPG():
         # critic_loss = critic_loss.mean()
         # --------------------- optimize the critic ---------------------------- #
         self.critic_optimizer.zero_grad()
-        critic_loss.backward()
+        critic_loss_batch.backward()
         self.critic_optimizer.step()
         # ---------------------- compute actor loss ---------------------------- #
         # we want maximum reward (Q) so loss is negative of current Q
         # noise = torch.tensor(np.random.normal(size= (rewards.shape[0], num_atoms, 1)),dtype=torch.float)  #todo, add how many taus we want.. # SDPG specific
         
-        actor_loss = -self.critic(states, self.actor(states), q_hat_sample_noise).mean(dim=1)
-        actor_loss = torch.mean(actor_loss)
+        actor_loss = self.critic(states, self.actor(states), q_hat_sample_noise)
+        actor_loss = actor_loss.mean(dim=1)
+        actor_loss_batch = -actor_loss.sum()
         # --------------------- optimize the actor ----------------------------- #
         self.actor_optimizer.zero_grad()
-        actor_loss.backward()
+        actor_loss_batch.backward()
         self.actor_optimizer.step()
         
         # --------------------- Prioritized Replay Buffer ---------------------- #
@@ -210,11 +216,14 @@ class DPG():
         # calculate TD_error
         # we do not want this to enter into computation graph for autograd
         with torch.no_grad():
-            td_error = td_error.abs()
+            td_error = td_error.abs().view(batch_size,-1)
             # td_error = error_loss.view(batch_size,-1)
-            #td_error = td_error.mean(axis=1)
+            td_error = td_error.mean(axis=1)
         #    td_error = loss.view(batch_size,-1).mean(axis=1).abs()
             new_p = td_error + self.PER_eps
+            
+            if (torch.any(torch.isnan(new_p))): 
+                print('priorities: got a NaN reward. Need to fix it. Priorities are : {}'.format(new_p))
             # -------------------- update PER priorities ----------------------- #
             self.memory.update_priorities(indices, new_p.cpu().data.numpy().tolist())
         
