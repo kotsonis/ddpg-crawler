@@ -13,8 +13,8 @@ env = UnityEnvironment(file_name='./Crawler_Windows_x86_64/Crawler.exe')
 #env = UnityEnvironment(file_name='./Reacher_Windows_x86_64/Reacher.exe', worker_id=1, no_graphics=True)
 hyper_params = config.Configuration()
 hyper_params.process_env(env)
-hyper_params.n_step = 5
-hyper_params.PER_batch_size = 512 #16
+hyper_params.n_step = 7
+hyper_params.PER_batch_size = 128 #16
 #hyper_params.PER_batch_size = 2 #16
 num_agents = hyper_params.num_agents
 action_size = hyper_params.action_size
@@ -23,7 +23,7 @@ n_episodes = 5000
 n_frames = 1000
 hyper_params.update_every = 4
 hyper_params.eps_start = 0.90
-hyper_params.epsilon_min = 0.001 # 1e-2
+hyper_params.epsilon_min = 0.01 # 1e-2
 hyper_params.eps_decay_rate = 0.9999
 #hyper_params.num_atoms = 5
 hyper_params.num_atoms = 51
@@ -53,14 +53,20 @@ agent_scores = np.zeros(num_agents)                          # initialize the sc
 frames = 0
 i_episode = 0
 t_step = 0
+step = 0
+agent.noise.reset()
 while t_step < total_train_steps:
     i_episode += 1
     env_info = env.reset(train_mode=True)[brain_name] # reset the environment
     states = env_info.vector_observations             # get the current state of each agent
     agent_scores = np.zeros(num_agents)
     frames = 0
+    if (step+1) % 10000 == 0 : 
+        agent.noise.reset()
+        step = 0
     while True: # each frame
-        actions = agent.act(states)
+        actions = agent.act(states, add_noise=True, t=step)
+        step += 1
         env_info = env.step(actions)[brain_name]          # send all actions to tne environment
         next_states = env_info.vector_observations        # get next state (for each agent)
         
@@ -70,13 +76,14 @@ while t_step < total_train_steps:
             print('got a NaN reward. Need to fix it.')
         
         dones = env_info.local_done                       # see if episode finished
-        rewards += np.array(dones)*-5.0
+        if frames < 999:
+            rewards += np.array(dones)*-5.0
         t_step = agent.step(states, actions, rewards, next_states, dones)
         agent_scores += rewards                           # update the score (for each agent)
         states = next_states                              # roll over states to next time step
         frames = frames+1
-        if frames % 10 == 0:
-            print('\rEpisode {}\t Frame: {:4}/1000 \t Score: {:.2f} \t Training to go: {:.0f}, eps: {:.2f}'.format(i_episode, frames, np.mean(agent_scores), total_train_steps - t_step, agent.eps), end="")
+        #if frames % 10 == 0:
+            #print('\rEpisode {}\t Frame: {:4}/1000 \t Score: {:.2f} \t Training to go: {:.0f}, eps: {:.2f}'.format(i_episode, frames, np.mean(agent_scores), total_train_steps - t_step, agent.eps), end="")
         
         if np.any(dones):                                 # exit loop if episode finished
             break

@@ -111,7 +111,7 @@ class DPG():
                 self.learn()
         return self.train_step
 
-    def act(self,states, add_noise=True):
+    def act(self,states, add_noise=True, t=1):
         """ act according to target policy based on state """
 
         # move states into torch tensor on device
@@ -122,7 +122,7 @@ class DPG():
             action = self.actor_target(state).cpu().data.numpy()
             # if we are being stochastic, add noise weighted by exploration
             if add_noise:
-                action += self.eps*self.noise.sample()
+                action = self.noise.get_action(action,t)
         self.actor_target.train()
 
         return np.clip(action, -1, 1)  # TODO: clip according to Unity environment feedback
@@ -242,7 +242,6 @@ class DPG():
         # ------------------- update noise and exploration --------------------- #
         self.eps *= self.eps_decay
         self.eps = max(self.eps, self.eps_min)
-        self.noise.reset()
         
         return
         
@@ -256,20 +255,33 @@ class DPG():
 class OUNoise:
     """Ornstein-Uhlenbeck process."""
 
-    def __init__(self, size, mu=0., theta=0.15, sigma=0.2):
+    def __init__(self, size, mu=0., theta=0.15, max_sigma=0.3, min_sigma=0.00, decay_period=5000, high=1.0, low=-1.0):
         """Initialize parameters and noise process."""
         self.mu = mu * np.ones(size)
+        self.action_dim = size
         self.theta = theta
-        self.sigma = sigma
+        self.sigma = max_sigma
+        self.max_sigma = max_sigma
+        self.min_sigma = min_sigma
+        self.decay_period = decay_period
+        self.low = low
+        self.high = high
         self.reset()
 
     def reset(self):
         """Reset the internal state (= noise) to mean (mu)."""
         self.state = copy.copy(self.mu)
+        self.sigma = self.max_sigma
 
-    def sample(self):
+    def evolve_state(self):
         """Update internal state and return it as a noise sample."""
         x = self.state
-        dx = self.theta * (self.mu - x) + self.sigma * np.array([random.random() for i in range(len(x))])
+        dx = self.theta * (self.mu - x) + self.sigma * np.random.randn(self.action_dim)
         self.state = x + dx
         return self.state
+    def get_action(self, action, t=0):
+        ou_state = self.evolve_state()
+        self.sigma = self.max_sigma - (self.max_sigma - self.min_sigma) * min(1.0, t/self.decay_period)
+        return np.clip(action + ou_state, self.low, self.high)
+    
+

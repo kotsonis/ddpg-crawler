@@ -52,7 +52,7 @@ class Actor_SDPG(nn.Module):
     def reset_parameters(self):
         self.dense1.weight.data.uniform_(*hidden_init(self.dense1))
         self.dense2.weight.data.uniform_(*hidden_init(self.dense2))
-        self.output_fc.weight.data.uniform_(*hidden_init(self.output_fc))
+        self.output_fc.weight.data.uniform_(-3e-3,3e-3)
         return
     def forward(self, states):
         x = self.batchnorm(states.view(-1,self.state_size))
@@ -93,7 +93,7 @@ class Critic_SDPG(nn.Module):
         self.dense2b.weight.data.uniform_(*hidden_init(self.dense2b))
         self.dense2c.weight.data.uniform_(*hidden_init(self.dense2c))
         self.dense3.weight.data.uniform_(*hidden_init(self.dense3))
-        self.output_fc.weight.data.uniform_(*hidden_init(self.output_fc))
+        self.output_fc.weight.data.uniform_(-3e-3,3e-3)
         return
     
     
