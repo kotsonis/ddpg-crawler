@@ -1,3 +1,16 @@
+# my trial files
+choleski.py
+tqdm_test.py
+model/
+# Unity environments
+Reacher_Windows_x86_64/
+Crawler_Windows_x86_64/
+
+# tensorboard summaries
+tb/
+# vs-code
+.vscode/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -128,9 +141,3 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Unity environments
-Reacher_Windows_x86_64/
-Crawler_Windows_x86_64/
-
-# vs-code
-.vscode/

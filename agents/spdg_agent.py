@@ -1,40 +1,44 @@
 import os
 import random
 import numpy as np
+from tqdm import tqdm
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from tensorboardX import SummaryWriter
 from collections import deque
 import copy
 
-from models import Actor_SDPG, Critic_SDPG
-from buffers import PrioritizedReplayBuffer,nStepPER
-from config import Configuration
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+from networks import models
+from utils import buffers
+from agents import base_agent
 
-def tile(a, dim, n_tile):
-    """ helper function: tile of torch tensor... since we are not using latest pytorch"""
-    init_dim = a.size(dim)
-    repeat_idx = [1] * a.dim()
-    repeat_idx[dim] = n_tile
-    a = a.repeat(*(repeat_idx))
-    order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)])).to(device)
-    return torch.index_select(a, dim, order_index)
+from absl import logging
+from absl import flags
+config = flags.FLAGS
+flags.DEFINE_integer(
+                    name='SPDG_num_atoms',
+                  default=64,
+                  help='number of atoms to sample for the critic Q_value distribution')
 
-class DPG():
-    def __init__(self, config):
+class SPDG(Agent):
+    def __init__(
+                self,
+                **kwargs):
         # ----------------- create online & target actors -------------------- #
-        self.actor = Actor_SDPG(config.state_size, config.action_size, dense1_size=config.dense1_size, dense2_size=config.dense2_size).to(device)
-        self.actor_target = copy.deepcopy(self.actor).to(device)
-        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=1e-4)
+        actor_dnn_class = models.Actor_SDPG
+        critic_dnn_class = models.Critic_SDPG
+        self.num_atoms = config.SPDG_num_atoms
+        Super(DDPG,self).__init__(
+                                 actor_dnn_class = models.Actor_SDPG,
+                                 critic_dnn_class = models.Critic_SDPG,
+                                 num_atoms = self.num_atoms
+                                 **kwargs)
+        
         # ---------------- create online & target critics -------------------- #
-        self.critic = Critic_SDPG(config.state_size, config.action_size,num_atoms = config.num_atoms, dense1_size=config.dense1_size, dense2_size=config.dense2_size).to(device)
-        self.critic_target = copy.deepcopy(self.critic).to(device)
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4)
         # --------------------- store hyperparameters ------------------------ #
         # Environment
-        self.state_size = config.state_size
-        self.action_size = config.action_size
         
         # discounting and discounting steps
         self.discount = config.gamma
@@ -57,75 +61,16 @@ class DPG():
         self.update_every = config.update_every
         self.t_step = 0
         self.train_step = 0
-        self.num_atoms = config.num_atoms
         # Noise process
         self.noise = OUNoise(self.action_size)
 
         # initialize the replay buffer
         self.memory = nStepPER(size=self.PER_buffer,batch_size=self.batch_size,alpha=self.PER_alpha,n_step=self.n_step,gamma=self.discount)
-
-        
-    def save_models(self, save_dir):
-        """ Save actor & critic models to directory """
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        torch.save(
-            self.critic.state_dict(),
-            os.path.join(save_dir, 'critic_online_net.pth'))
-        torch.save(
-            self.critic_target.state_dict(),
-            os.path.join(save_dir, 'critic_target_net.pth'))
-        torch.save(
-            self.actor.state_dict(),
-            os.path.join(save_dir, 'actor_online_net.pth'))
-        torch.save(
-            self.actor_target.state_dict(),
-            os.path.join(save_dir, 'actor_target_net.pth'))
+  
 
 
-    def load_models(self, save_dir):
-        """ Load actor & critic models from directory """
-        self.critic.load_state_dict(torch.load(
-            os.path.join(save_dir, 'critic_online_net.pth')))
-        self.critic_target.load_state_dict(torch.load(
-            os.path.join(save_dir, 'critic_target_net.pth')))
-        self.actor.load_state_dict(torch.load(
-            os.path.join(save_dir, 'actor_online_net.pth')))
-        self.actor_target.load_state_dict(torch.load(
-            os.path.join(save_dir, 'actor_target_net.pth')))
-        
 
-    def step(self, state, action, reward, next_state, done):
-        """Process one step of Agent/environment interaction"""
 
-        # add frame/maximum frames to reward
-        
-        # Save experience / reward
-        self.memory.add(state,action,reward,next_state,done)
-        self.t_step += 1
-         # Learn every UPDATE_EVERY time steps.
-        if (self.t_step < 2000) : return self.train_step
-        if (self.t_step + 1) % self.update_every == 0:
-            # If enough samples are available in memory, perform a learning step
-            if len(self.memory) > self.batch_size:
-                self.learn()
-        return self.train_step
-
-    def act(self,states, add_noise=True, t=1):
-        """ act according to target policy based on state """
-
-        # move states into torch tensor on device
-        state = torch.FloatTensor(states).to(device)
-        # turn off training mode
-        self.actor_target.eval()
-        with torch.no_grad():
-            action = self.actor_target(state).cpu().data.numpy()
-            # if we are being stochastic, add noise weighted by exploration
-            if add_noise:
-                action = self.noise.get_action(action,t)
-        self.actor_target.train()
-
-        return np.clip(action, -1, 1)  # TODO: clip according to Unity environment feedback
 
     def learn(self):
         """ samples a batch of experiences to perform one step of learning Actor/Critic """
@@ -243,6 +188,7 @@ class DPG():
         self.eps *= self.eps_decay
         self.eps = max(self.eps, self.eps_min)
         
+        
         return
         
     def soft_update(self, local_model, target_model, tau):
@@ -255,33 +201,21 @@ class DPG():
 class OUNoise:
     """Ornstein-Uhlenbeck process."""
 
-    def __init__(self, size, mu=0., theta=0.15, max_sigma=0.3, min_sigma=0.00, decay_period=5000, high=1.0, low=-1.0):
+    def __init__(self, size, mu=0., theta=0.15, sigma=0.2):
         """Initialize parameters and noise process."""
         self.mu = mu * np.ones(size)
-        self.action_dim = size
         self.theta = theta
-        self.sigma = max_sigma
-        self.max_sigma = max_sigma
-        self.min_sigma = min_sigma
-        self.decay_period = decay_period
-        self.low = low
-        self.high = high
+        self.sigma = sigma
+        self.action_dims = size
         self.reset()
 
     def reset(self):
         """Reset the internal state (= noise) to mean (mu)."""
         self.state = copy.copy(self.mu)
-        self.sigma = self.max_sigma
 
-    def evolve_state(self):
+    def sample(self):
         """Update internal state and return it as a noise sample."""
         x = self.state
-        dx = self.theta * (self.mu - x) + self.sigma * np.random.randn(self.action_dim)
+        dx = self.theta * (self.mu - x) + self.sigma * np.random.randn(self.action_dims)
         self.state = x + dx
         return self.state
-    def get_action(self, action, t=0):
-        ou_state = self.evolve_state()
-        self.sigma = self.max_sigma - (self.max_sigma - self.min_sigma) * min(1.0, t/self.decay_period)
-        return np.clip(action + ou_state, self.low, self.high)
-    
-

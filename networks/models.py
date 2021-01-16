@@ -3,6 +3,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from config import Configuration
+from absl import logging
+from absl import flags
+config = flags.FLAGS
+flags.DEFINE_float(
+                  name='dual_constraint',
+                  default=0.1,
+                  help='hard constraint of the E-step')
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def hidden_init(layer):
@@ -36,16 +44,21 @@ class Actor(nn.Module):
         x = F.leaky_relu(self.layer_2(x))
         #x = F.leaky_relu(self.bn2(self.layer_2(x)))
         return torch.tanh(self.layer_3(x))
+    def action(self, state):
+        """ Generates actions from states. """
+        with torch.no_grad():
+            actions = self.forward(states)
+        return actions
 
 class Actor_SDPG(nn.Module):
     def __init__(self, state_size, action_size, dense1_size, dense2_size):
         super(Actor_SDPG,self).__init__()
         self.state_size = state_size
         self.action_size = action_size
-        self.dense1 = nn.Linear(state_size, dense1_size).cuda()
-        self.batchnorm = nn.BatchNorm1d(state_size).cuda()
-        self.dense2 = nn.Linear(dense1_size, dense2_size).cuda()
-        self.output_fc = nn.Linear(dense2_size,action_size).cuda()
+        self.dense1 = nn.Linear(state_size, dense1_size).to(device)
+        self.batchnorm = nn.BatchNorm1d(state_size).to(device)
+        self.dense2 = nn.Linear(dense1_size, dense2_size).to(device)
+        self.output_fc = nn.Linear(dense2_size,action_size).to(device)
         self.reset_parameters()
         return
 
@@ -76,14 +89,14 @@ class Critic_SDPG(nn.Module):
         self.dense2_size = dense2_size
         self.num_atoms = num_atoms
         #self.phi_embedding_size = phi_embedding_size
-        self.dense1 = nn.Linear(state_size, dense1_size).cuda()
-        self.batchnorm = nn.BatchNorm1d(state_size).cuda()
+        self.dense1 = nn.Linear(state_size, dense1_size).to(device)
+        self.batchnorm = nn.BatchNorm1d(state_size).to(device)
         #self.dense2a = nn.Linear(dense1_size+action_size, dense2_size).cuda()
-        self.dense2a = nn.Linear(dense1_size, dense2_size).cuda()
-        self.dense2b = nn.Linear(action_size, dense2_size).cuda()
-        self.dense2c = nn.Linear(1, dense2_size).cuda()
-        self.dense3 = nn.Linear(dense2_size, dense2_size).cuda()
-        self.output_fc = nn.Linear(dense2_size,1).cuda()
+        self.dense2a = nn.Linear(dense1_size, dense2_size).to(device)
+        self.dense2b = nn.Linear(action_size, dense2_size).to(device)
+        self.dense2c = nn.Linear(1, dense2_size).to(device)
+        self.dense3 = nn.Linear(dense2_size, dense2_size).to(device)
+        self.output_fc = nn.Linear(dense2_size,1).to(device)
         self.reset_parameters()
         return
 
