@@ -9,13 +9,13 @@ import config as config
 from agent import DPG
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-env = UnityEnvironment(file_name='./Crawler_Windows_x86_64/Crawler.exe')
+env = UnityEnvironment(file_name='../../deep-reinforcement-learning/p2_continuous-control/Crawler_Windows_x86_64/Crawler.exe')
 #env = UnityEnvironment(file_name='./Reacher_Windows_x86_64/Reacher.exe', worker_id=1, no_graphics=True)
 hyper_params = config.Configuration()
 hyper_params.process_env(env)
-hyper_params.n_step = 7
-hyper_params.PER_batch_size = 128 #16
-#hyper_params.PER_batch_size = 2 #16
+hyper_params.n_step = 20
+hyper
+_params.PER_batch_size = 64 #16
 num_agents = hyper_params.num_agents
 action_size = hyper_params.action_size
 brain_name = hyper_params.brain_name
