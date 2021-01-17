@@ -3,7 +3,8 @@ from absl import app
 from absl import logging
 from absl import flags
 from unityagents import UnityEnvironment
-from mpo import MPO
+from agents import base_agent
+
 #import numpy as np
 #import torch
 #import torch.nn as nn
@@ -32,22 +33,9 @@ def main(argv):
     logging.get_absl_handler().use_absl_log_file()
     # modify some parameters of training
     env = UnityEnvironment(file_name=config.env)
-    model = MPO(
-        config.device,
-        env,
-        dual_constraint=config.dual_constraint,
-        kl_mean_constraint=config.kl_mean_constraint,
-        kl_var_constraint=config.kl_var_constraint,
-        kl_constraint=config.kl_constraint,
-        discount_factor=config.discount_factor,
-        alpha=config.alpha,
-        sample_process_num=config.sample_process_num,
-        sample_episode_num=config.sample_episode_num,
-        sample_episode_maxlen=config.sample_episode_maxlen,
-        sample_action_num=config.sample_action_num,
-        batch_size=config.batch_size,
-        episode_rerun_num=config.episode_rerun_num,
-        lagrange_iteration_num=config.lagrange_iteration_num)
+    model = base_agent.Agent(
+        device=config.device,
+        env=env)
 
     if config.load is not None:
         model.load_model(config.load)
@@ -57,7 +45,7 @@ def main(argv):
             frames = 1000)
     if config.train is not None:
         model.train(
-            iteration_num=config.iteration_num,
+            training_iterations=config.training_iterations,
             log_dir=config.log_dir,
             render=config.render,
             debug=config.debug)

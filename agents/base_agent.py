@@ -16,12 +16,25 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tensorboardX import SummaryWriter
 from collections import deque
+from utils import OUNoise
 import copy
 
 from networks import models
-from buffers import PrioritizedReplayBuffer, nStepPER
+from utils.buffers import PrioritizedReplayBuffer
 
 config = flags.FLAGS
+flags.DEFINE_float(
+    name='eps_start',
+    default=1.0,
+    help='starting exploration rate (0,1]')
+flags.DEFINE_float(
+    name='eps_minimum',
+    default=0.001,
+    help='minimum exploration rate')
+flags.DEFINE_float(
+    name='eps_decay',
+    default=0.995,
+    help='eps decay rate. eps=eps*eps_decay')
 flags.DEFINE_float(
     name='actor_lr',
     default=3e-4,
@@ -40,7 +53,7 @@ flags.DEFINE_string(
     help='saved agent model to load')
 flags.DEFINE_integer(
     name='training_iterations',
-    default=1e5,
+    default=100000,
     help='number of agent/env interactions to perform')
 flags.DEFINE_integer(
     name='learn_every',
@@ -65,11 +78,13 @@ class Agent():
                 **kwargs):
         self.device = kwargs.setdefault('device','cpu')
         self.name = kwargs.setdefault('name','BaseRLAgent')
+        self.eps_start = kwargs.get('eps_start', config.eps_start)
+        self.eps_minimum = kwargs.get('eps_minimum', config.eps_minimum)
+        self.eps_decay = kwargs.get('eps_decay', config.eps_decay)
+        self.eps = self.eps_start
         self.learn_every = kwargs.setdefault('learn_every',config.learn_every)
-
-        self.logger = logging.getLogger("Agent").setLevel(logging.DEBUG)
-        logger = self.logger
-        logger.info('Create an Agent type %s', __name__)
+        
+        logging.info('Create an Agent type %s', __name__)
         
         #process Unity environment details
         self.env = env
@@ -80,7 +95,7 @@ class Agent():
         # create replay buffer
         replay_buffer_class = kwargs.setdefault('replay_buffer_class',PrioritizedReplayBuffer)
         self.memory = replay_buffer_class(**kwargs)
-        
+        self.noise = OUNoise.OUNoise(self.da)
         #create actor & critic networks
         actor_dnn_class = kwargs.setdefault('actor_dnn_class',models.Actor)
         self.actor = actor_dnn_class(**kwargs).to(self.device)
@@ -123,25 +138,24 @@ class Agent():
         """ act according to target policy based on state """
 
         # move states into torch tensor on device
-        state = torch.FloatTensor(states).to(device)
+        state = torch.FloatTensor(states).to(self.device)
         # turn off training mode
-        self.actor_target.eval()
+        self.target_actor.eval()
+        
         with torch.no_grad():
-            action = self.actor_target(state).cpu().data.numpy()
+            action = self.target_actor(state).cpu().data.numpy()
             # if we are being stochastic, add noise weighted by exploration
             if add_noise:
-                action += self.eps*self.noise.sample()
-        self.actor_target.train()
+                action += self.eps*self.noise.sample().data.numpy()
+        self.target_actor.train()
 
         return np.clip(action, -1, 1)  # TODO: clip according to Unity environment feedback
     
     def step(self, state, action, reward, next_state, done):
-            """Processes one step of Agent/environment interaction and invokes a learning step accordingly."""
-
+        """Processes one step of Agent/environment interaction and invokes a learning step accordingly."""
         # Save experience / reward
-        self.memory.add(state,action,reward,next_state,done)
+        self.memory.add(state=state,action=action,reward=reward,next_state=next_state,done=done)
         self.t_step += 1
-        
         if (self.t_step < 2000) : return self.train_step
         # Learn every UPDATE_EVERY time steps.
         if (self.t_step + 1) % self.learn_every == 0:
@@ -172,40 +186,45 @@ class Agent():
             agent_scores = np.zeros(num_agents)
             frames = 0
             for steps in range(self.max_frames_per_episode):
-                    actions = self.target_actor.action(
-                        torch.from_numpy(states).type(
-                            torch.float32).to(self.device)
-                    ).cpu().numpy()
-                    env_info = self.env.step(actions)[self.brain_name]
-                    next_states = env_info.vector_observations
-                    rewards = env_info.rewards
-                    # fix NaN rewards of crawler environment, by penalizing a NaN reward
-                    rewards = np.nan_to_num(rewards, nan=-5.0)
-                    dones = env_info.local_done                       # see if episode finished
-                    frames += 1
-                    agent_scores += rewards
-                    if frames % 20 == 0:
-                        print('\rEpisode {}\t Frame: {:4}/1000 \t Score: {:.2f}'
-                            .format(
-                                episode,
-                                frames,
-                                np.mean(agent_scores)
-                            ), end="")
-                    if np.any(dones):
-                        break
-                    else:
-                        states = next_states
-                scores.append(np.mean(agent_scores))
-                print('\rEpisode: {}\tscore:{}\t running mean score: {:.2f}'
-                    .format(
-                        episode,
-                        np.mean(agent_scores),
-                        np.mean(scores)))
+                actions = self.target_actor.action(
+                    torch.from_numpy(states).type(
+                        torch.float32).to(self.device)
+                ).cpu().numpy()
+                env_info = self.env.step(actions)[self.brain_name]
+                next_states = env_info.vector_observations
+                rewards = env_info.rewards
+                # fix NaN rewards of crawler environment, by penalizing a NaN reward
+                rewards = np.nan_to_num(rewards, nan=-5.0)
+                dones = env_info.local_done                       # see if episode finished
+                frames += 1
+                agent_scores += rewards
+                if frames % 20 == 0:
+                    print('\rEpisode {}\t Frame: {:4}/1000 \t Score: {:.2f}'
+                        .format(
+                            episode,
+                            frames,
+                            np.mean(agent_scores)
+                        ), end="")
+                if np.any(dones):
+                    break
+                else:
+                    states = next_states
+                
+            scores.append(np.mean(agent_scores))
+            print('\rEpisode: {}\tscore:{}\t running mean score: {:.2f}'
+                .format(
+                    episode,
+                    np.mean(agent_scores),
+                    np.mean(scores)))
+
     def train(self, **kwargs):
         self.training_iterations = kwargs.setdefault('training_iterations', config.training_iterations)
         env = self.env
         scores = []                                 # list containing scores from each episode
         scores_window = deque(maxlen=100)           # last 100 scores
+        env_info = self.env.reset(train_mode=False)[self.brain_name]
+        num_agents = len(env_info.agents)
+        states = env_info.vector_observations
         agent_scores = np.zeros(num_agents)         # initialize the score (for each agent)
         
         i_episode = 0
@@ -221,14 +240,15 @@ class Agent():
         while self.iteration < self.training_iterations:
             for it in trange(15, leave=False, desc='Episodes {:3d}-{:3d}'.format(i_episode, i_episode+15)):
                 i_episode += 1
-                env_info = env.reset(train_mode=True)[brain_name] # reset the environment
+                env_info = env.reset(train_mode=True)[self.brain_name] # reset the environment
                 states = env_info.vector_observations             # get the current state of each agent
                 agent_scores = np.zeros(num_agents)
-                agent.noise.reset()
+                
+                #agent.noise.reset()
                 while True: # each frame
-                    actions = agent.act(states, add_noise=True)
+                    actions = self.act(states, add_noise=True)
                     step += 1
-                    env_info = env.step(actions)[brain_name]          # send all actions to tne environment
+                    env_info = env.step(actions)[self.brain_name]          # send all actions to tne environment
                     next_states = env_info.vector_observations        # get next state (for each agent)
                     rewards = env_info.rewards                        # get reward (for each agent)
                     if (np.any(np.isnan(rewards))): 
@@ -262,7 +282,7 @@ class Agent():
             if i_episode % 100 == 0:
                 print('\rEpisodes: {}\t 100 episode mean score: {:.2f}\t training to go: {:.0f}, eps: {:.2f}'.format(
                     i_episode, np.mean(scores_window), total_train_steps - t_step, agent.eps ))
-                    agent.save_models(hyper_params.model_dir)
+                agent.save_models(hyper_params.model_dir)
                 if np.mean(scores_window)>=solution:
                     if ( not solution_found):
                         print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode-100, np.mean(scores_window)))

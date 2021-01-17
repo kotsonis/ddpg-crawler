@@ -4,27 +4,56 @@
 import numpy as np
 import torch
 import random
-from segmenttrees import SumSegmentTree, MinSegmentTree
+from utils import segmenttrees
 from collections import namedtuple, deque
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+from absl import logging
+from absl import flags
+config = flags.FLAGS
+flags.DEFINE_integer(
+    name='memory_size',
+    default=1000000,
+    help='size of replay memory')
+flags.DEFINE_integer(
+    name='memory_batch_size',
+    default=128,
+    help='batch size for replay memory samples')
+flags.DEFINE_float(
+    name='PER_alpha',
+    default = 0.5,
+    help='α factor (prioritization) for Prioritized Replay Buffer')
+flags.DEFINE_float(
+    name='PER_beta_min',
+    default = 0.5,
+    help='starting β factor (randomness) for Prioritized Replay Buffer')
+flags.DEFINE_float(
+    name='PER_beta_max',
+    default=1.0,
+    help='ending β factor (randomness) for Prioritized Replay Buffer')
+
 
 class ReplayBuffer():
     """ Experience Replay Buffer class """
-    def __init__(self, size:int):
+    def __init__(self, 
+               **kwargs):
         """Create simple Replay circular buffer as a list"""
+
         self._buffer = []
-        self._maxsize = size
-        self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done", "gamma"])
-        # self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
+        self._maxsize = kwargs.setdefault('memory_size', config.memory_size)
+        self._batch_size = kwargs.setdefault('memory_batch_size',config.memory_batch_size)
+        self.experience = (self.__dict__.get('experience',
+                                        namedtuple("Experience", 
+                                                  field_names=["state", "action", "reward", "next_state", "done"])))
+        self.device = kwargs.get('device', 'cpu')
         self._next_idx = 0      # next available index for circular buffer is at start
+    
 
     def __len__(self):
         return len(self._buffer)
 
     #def add(self, state, action, reward, next_state, done, gamma):
-    def add(self, state, action, reward, next_state, done, gamma):
+    def add(self, **kwargs):
         """ Add a new experience to replay buffer """
-        data = self.experience(state, action, reward, next_state, done, gamma)
+        data = self.experience(**kwargs)
         if self._next_idx >= len(self._buffer):         
             # when we are still filling the buffer to capacity
             self._buffer.append(data)
@@ -36,51 +65,45 @@ class ReplayBuffer():
         
     def _encode_sample(self, idxes):
         "encode batch of experiences indexed by idxes from buffer"
-        states, actions, rewards, next_states, dones, gammas = [], [], [], [],[], []
-        for idx in idxes:
-            states.append(self._buffer[idx].state)
-            actions.append(self._buffer[idx].action)
-            rewards.append(self._buffer[idx].reward)
-            next_states.append(self._buffer[idx].next_state)
-            dones.append(self._buffer[idx].done)
-            gammas.append(self._buffer[idx].gamma)
-        states = torch.tensor(states).float().to(device)
-        actions = torch.tensor(actions).float().to(device)
-        rewards = torch.tensor(rewards).float().unsqueeze(-1).to(device)
-        next_states = torch.tensor(next_states).float().to(device)
-        dones = torch.tensor(dones).float().unsqueeze(-1).to(device)
-        gammas = torch.tensor(gammas).float().unsqueeze(-1).to(device)
-        
-        return (states, actions, rewards, next_states, dones, gammas)
+        res = np.array(itemgetter(*idxes)(self._buffer), dtype=object)
+        ret_val = zip(*res)
+        ret_list = []
+        for vals in ret_val:
+            d = torch.tensor(vals).float().to(self.device)
+            if (d.dim() < 2):
+                d = d.unsqueeze(-1)
+            ret_list.append(d)
+        return tuple(ret_list)
 
-    def sample(self, batch_size):
+
+    def sample(self, **kwargs):
         """Sample a random batch of experiences."""
+        batch_size = kwargs.get('batch_size', self._batch_size)
         idxes = [random.randint(0, len(self._buffer) - 1) for _ in range(batch_size)]
         return self._encode_sample(idxes)
 
 class PrioritizedReplayBuffer(ReplayBuffer):
     """ A Prioritized according to TD Error replay buffer """
-    def __init__(self, size: int, batch_size: int, alpha: float):
+    def __init__(self, **kwargs):
         """Create Prioritized(alpha=0 -> no priority) Replay circular buffer as a list"""
-        super(PrioritizedReplayBuffer, self).__init__(size)
-        assert alpha >= 0, "negative alpha not allowed"
-        self._alpha = alpha
-        self._batch_size = batch_size
+        super(PrioritizedReplayBuffer, self).__init__(**kwargs)
+        self._alpha = kwargs.setdefault('PER_alpha', config.PER_alpha)
+        assert self._alpha >= 0, "negative alpha not allowed"
 
         # find minimum power of 2 size for segment trees
         st_capacity = 1
-        while st_capacity < size:
+        while st_capacity < self._maxsize:
             st_capacity *= 2
 
-        self._st_sum = SumSegmentTree(st_capacity)
-        self._st_min = MinSegmentTree(st_capacity)
+        self._st_sum = segmenttrees.SumSegmentTree(st_capacity)
+        self._st_min = segmenttrees.MinSegmentTree(st_capacity)
         # set priority with which new experiences will be added. 1.0 means they have highest chance of being sampled
         self._max_priority = 1.0
 
-    def add(self, *args, **kwargs):
+    def add(self, **kwargs):
         """See ReplayBuffer.store_effect"""
         idx = self._next_idx                # obtain next available index to store at from the replay buffer parent class
-        super().add(*args, **kwargs)        # add to the replay buffer
+        super().add(**kwargs)        # add to the replay buffer
         self._st_sum[idx] = self._max_priority ** self._alpha   # put it in the sum tree with max priority
         self._st_min[idx] = self._max_priority ** self._alpha   # put it in the min tree with max priority
 
@@ -108,15 +131,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         max_weight = (p_min * len(self._buffer)) ** (-beta)
         
         for idx in idxes:
-            # Compute importance-sampling weight (w_i) and append to weights
-            #              priority of transition
-            # P(i) = -------------------------------------
-            #        sum of priorities for all transitions
-            #       |    1      |^beta
-            # w_i = | --------- |
-            #       |  N * P(i) |
-            # and then normalize by the maximum weight
-            # w_j =  w_i/max_weight
             p_sample = self._st_sum[idx] / p_sum
             weight_sample = (p_sample * len(self._buffer)) ** (-beta) 
             weights.append(weight_sample / max_weight)

@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from config import Configuration
 from absl import logging
 from absl import flags
 config = flags.FLAGS
@@ -19,7 +18,7 @@ def hidden_init(layer):
     return (-lim, lim)
 
 class Actor(nn.Module):
-    def __init__(self, state_size, action_size):
+    def __init__(self, state_size, action_size,**kwargs):
         super(Actor, self).__init__()
         self.state_size = state_size
         self.action_size = action_size
@@ -51,7 +50,7 @@ class Actor(nn.Module):
         return actions
 
 class Actor_SDPG(nn.Module):
-    def __init__(self, state_size, action_size, dense1_size, dense2_size):
+    def __init__(self, state_size, action_size, dense1_size, dense2_size, **kwargs):
         super(Actor_SDPG,self).__init__()
         self.state_size = state_size
         self.action_size = action_size
@@ -78,7 +77,7 @@ class Actor_SDPG(nn.Module):
         return x
 
 class Critic_SDPG(nn.Module):
-    def __init__(self, state_size, action_size, dense1_size, dense2_size, num_atoms, scope='critic'):
+    def __init__(self, state_size, action_size, dense1_size, dense2_size, num_atoms, scope='critic', **kwargs):
         super(Critic_SDPG, self).__init__()
         # self.v_min = v_min
         # self.v_max = v_max
@@ -142,7 +141,7 @@ class Critic_SDPG(nn.Module):
         return x.view(-1,self.num_atoms)
     """
 class Critic(nn.Module):
-    def __init__(self, state_size, action_size):
+    def __init__(self, state_size, action_size, **kwargs):
         super(Critic, self).__init__()
         self.state_size = state_size
         self.action_size = action_size

@@ -2,6 +2,7 @@
 choleski.py
 tqdm_test.py
 model/
+*.log*
 # Unity environments
 Reacher_Windows_x86_64/
 Crawler_Windows_x86_64/
