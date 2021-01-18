@@ -11,8 +11,8 @@ from torch.distributions import MultivariateNormal, Categorical
 from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 from tensorboardX import SummaryWriter
 
-from networks import actor
-from networks import critic
+from ..networks import actor
+from ..networks import critic
 from utils import replaybuffer
 
 from absl import app

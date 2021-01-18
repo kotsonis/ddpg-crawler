@@ -10,7 +10,31 @@ flags.DEFINE_float(
                   default=0.1,
                   help='hard constraint of the E-step')
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+flags.DEFINE_integer(
+                name='actor_dim_dense_1',
+                default=512,
+                help='output dimension of actor 1st hidden layer')
+flags.DEFINE_integer(
+                name='actor_dim_dense_2',
+                default=256,
+                help='output dimension of actor 2nd hidden layer')
+flags.DEFINE_integer(
+                name='actor_dim_dense_3',
+                default=128,
+                help='output dimension of actor 3nd hidden layer')
+flags.DEFINE_integer(
+                name='critic_dim_dense_1',
+                default=512,
+                help='output dimension of critic 1st hidden layer')
+flags.DEFINE_integer(
+                name='critic_dim_dense_2',
+                default=256,
+                help='output dimension of critic 2nd hidden layer')
+flags.DEFINE_integer(
+                name='critic_dim_dense_3',
+                default=128,
+                help='output dimension of critic 3nd hidden layer')
+
 
 def hidden_init(layer):
     fan_in = layer.weight.data.size()[0]
@@ -18,158 +42,94 @@ def hidden_init(layer):
     return (-lim, lim)
 
 class Actor(nn.Module):
-    def __init__(self, state_size, action_size,**kwargs):
+    def __init__(self, **kwargs):
         super(Actor, self).__init__()
-        self.state_size = state_size
-        self.action_size = action_size
-        self.state_fc = nn.Linear(state_size, 512)
-        self.bn1 = nn.BatchNorm1d(512)
-        self.state_fc1 = nn.Linear(512,256)
-        self.layer_2 = nn.Linear(256, 128)
-        #self.bn2 = nn.BatchNorm1d(128)
-        self.layer_3 = nn.Linear(128, action_size)
+        self.ds = kwargs['state_size']
+        self.da = kwargs['action_size']
+        self.dim_dense_1 = (kwargs
+                           .setdefault(
+                                     'actor_dim_dense_1',
+                                     config.actor_dim_dense_1))
+        self.dim_dense_2 = (kwargs
+                           .setdefault(
+                                     'actor_dim_dense_2',
+                                     config.actor_dim_dense_2))
+        self.dim_dense_3 = (kwargs
+                           .setdefault(
+                                     'actor_dim_dense_3',
+                                     config.actor_dim_dense_3))
+        self.device = kwargs.get('device','cpu')
+
+        self.state_fc_1 = nn.Linear(self.ds, self.dim_dense_1).to(self.device)
+        self.bn1 = nn.BatchNorm1d(self.dim_dense_1).to(self.device)
+        self.hidden_fc_1 = nn.Linear(self.dim_dense_1,self.dim_dense_2).to(self.device)
+        self.hidden_fc_2 = nn.Linear(self.dim_dense_2, self.dim_dense_3).to(self.device)
+        self.output_fc = nn.Linear(self.dim_dense_3, self.da).to(self.device)
         self.reset_parameters()
         return
     
     def reset_parameters(self):
-        self.state_fc.weight.data.uniform_(*hidden_init(self.state_fc))
-        self.state_fc1.weight.data.uniform_(*hidden_init(self.state_fc1))
-        self.layer_2.weight.data.uniform_(*hidden_init(self.layer_2))
-        self.layer_3.weight.data.uniform_(*hidden_init(self.layer_3))
+        self.state_fc_1.weight.data.uniform_(*hidden_init(self.state_fc_1))
+        self.hidden_fc_1.weight.data.uniform_(*hidden_init(self.hidden_fc_1))
+        self.hidden_fc_2.weight.data.uniform_(*hidden_init(self.hidden_fc_2))
+        self.output_fc.weight.data.uniform_(*hidden_init(self.output_fc))
 
     def forward(self, states):
-        x = F.leaky_relu(self.bn1(self.state_fc(states)))
-        x = F.leaky_relu(self.state_fc1(x))
-        x = F.leaky_relu(self.layer_2(x))
-        #x = F.leaky_relu(self.bn2(self.layer_2(x)))
-        return torch.tanh(self.layer_3(x))
+        xs = states.view(-1,self.ds)
+        x = F.leaky_relu(self.bn1(self.state_fc_1(xs)))
+        x = F.leaky_relu(self.hidden_fc_1(x))
+        x = F.leaky_relu(self.hidden_fc_2(x))
+        return torch.tanh(self.output_fc(x))
     def action(self, state):
         """ Generates actions from states. """
         with torch.no_grad():
             actions = self.forward(states)
         return actions
 
-class Actor_SDPG(nn.Module):
-    def __init__(self, state_size, action_size, dense1_size, dense2_size, **kwargs):
-        super(Actor_SDPG,self).__init__()
-        self.state_size = state_size
-        self.action_size = action_size
-        self.dense1 = nn.Linear(state_size, dense1_size).to(device)
-        self.batchnorm = nn.BatchNorm1d(state_size).to(device)
-        self.dense2 = nn.Linear(dense1_size, dense2_size).to(device)
-        self.output_fc = nn.Linear(dense2_size,action_size).to(device)
-        self.reset_parameters()
-        return
 
-    def reset_parameters(self):
-        self.dense1.weight.data.uniform_(*hidden_init(self.dense1))
-        self.dense2.weight.data.uniform_(*hidden_init(self.dense2))
-        self.output_fc.weight.data.uniform_(-3e-3,3e-3)
-        return
-    def forward(self, states):
-        x = self.batchnorm(states.view(-1,self.state_size))
-        #x = F.leaky_relu(self.dense1(self.batchnorm(x)))
-        x = F.leaky_relu(self.dense1(x))
-        x = F.leaky_relu(self.dense2(x))
-        x = torch.tanh(self.output_fc(x))
-        # Scale tanh output to lower and upper action bounds
-		# x = 0.5*((self.action_bound_high+self.action_bound_low) + x*(self.action_bound_high-self.action_bound_low))
-        return x
-
-class Critic_SDPG(nn.Module):
-    def __init__(self, state_size, action_size, dense1_size, dense2_size, num_atoms, scope='critic', **kwargs):
-        super(Critic_SDPG, self).__init__()
-        # self.v_min = v_min
-        # self.v_max = v_max
-        self.scope = scope
-        self.state_size = state_size
-        self.action_size = action_size
-        self.dense1_size = dense1_size
-        self.dense2_size = dense2_size
-        self.num_atoms = num_atoms
-        #self.phi_embedding_size = phi_embedding_size
-        self.dense1 = nn.Linear(state_size, dense1_size).to(device)
-        self.batchnorm = nn.BatchNorm1d(state_size).to(device)
-        #self.dense2a = nn.Linear(dense1_size+action_size, dense2_size).cuda()
-        self.dense2a = nn.Linear(dense1_size, dense2_size).to(device)
-        self.dense2b = nn.Linear(action_size, dense2_size).to(device)
-        self.dense2c = nn.Linear(1, dense2_size).to(device)
-        self.dense3 = nn.Linear(dense2_size, dense2_size).to(device)
-        self.output_fc = nn.Linear(dense2_size,1).to(device)
-        self.reset_parameters()
-        return
-
-    def reset_parameters(self):
-        self.dense1.weight.data.uniform_(*hidden_init(self.dense1))
-        self.dense2a.weight.data.uniform_(*hidden_init(self.dense2a))
-        self.dense2b.weight.data.uniform_(*hidden_init(self.dense2b))
-        self.dense2c.weight.data.uniform_(*hidden_init(self.dense2c))
-        self.dense3.weight.data.uniform_(*hidden_init(self.dense3))
-        self.output_fc.weight.data.uniform_(-3e-3,3e-3)
-        return
-    
-    
-    def forward(self, states, actions, samples ):
-        xs = states.view(-1,self.state_size)
-        xs = F.leaky_relu(self.dense1(self.batchnorm(xs)))
-        xs = self.dense2a(xs)
-        xs.unsqueeze_(1)
-        xa = self.dense2b(actions)
-        xa.unsqueeze_(1)
-        x = torch.add(xs,xa)
-        x_s = self.dense2c(samples).view(-1,self.num_atoms,self.dense2_size)
-        x = torch.add(x, x_s)
-        x = F.leaky_relu(self.dense3(x)).view(-1,self.dense2_size)
-        # self.dense2 = tf.reshape(self.dense2, [batch_size*num_atoms, dense2_size])
-        
-        x = self.output_fc(x)
-        # scale the output samples 
-        # self.output_samples = 0.5 * (x*(self.v_max - self.v_min)+ (self.v_max + self.v_min))
-        return x.view(-1,self.num_atoms)
-    """
-    def forward(self, states, actions, samples):
-        xs = self.batchnorm(states.view(-1,self.state_size))
-        #xs = F.leaky_relu(self.dense1(self.batchnorm(xs)))
-        xs = F.leaky_relu(self.dense1(xs))
-        x = torch.cat((xs, actions), dim=1)
-        x = F.leaky_relu(self.dense2a(x)).unsqueeze(1)
-        xa = self.dense2c(samples).view(-1,self.num_atoms,self.dense2_size)
-        xb = x+xa
-        x = F.leaky_relu(self.dense3(xb)).view(-1,self.dense2_size)
-        x = self.output_fc(x)
-        #x = F.leaky_relu(self.value_fc2(x))
-        return x.view(-1,self.num_atoms)
-    """
 class Critic(nn.Module):
-    def __init__(self, state_size, action_size, **kwargs):
+    def __init__(self, **kwargs):
         super(Critic, self).__init__()
-        self.state_size = state_size
-        self.action_size = action_size
-        self.state_fc = nn.Linear(state_size, 512)
-        self.bn1 = nn.BatchNorm1d(512)
-        self.state_fc1 = nn.Linear(512,256)
-        self.value_fc1 = nn.Linear(256 +action_size, 256)
-        self.value_fc2 = nn.Linear(256,128)
-        #self.bn2 = nn.BatchNorm1d(128)
-        self.output_fc = nn.Linear(128,1)
-        self.reset_parameters()
+        self.ds = kwargs['state_size']
+        self.da = kwargs['action_size']
+        self.device = kwargs.get('device','cpu')
+        self.dim_dense_1 = (kwargs
+                           .setdefault(
+                                     'critic_dim_dense_1',
+                                     config.critic_dim_dense_1))
+        self.dim_dense_2 = (kwargs
+                           .setdefault(
+                                     'critic_dim_dense_2',
+                                     config.critic_dim_dense_2))
+        self.dim_dense_3 = (kwargs
+                           .setdefault(
+                                     'critic_dim_dense_3',
+                                     config.critic_dim_dense_3))
+        self._set_networks()
+        self._reset_parameters()
         return
-    
-    def reset_parameters(self):
-        self.state_fc.weight.data.uniform_(*hidden_init(self.state_fc))
-        self.state_fc1.weight.data.uniform_(*hidden_init(self.state_fc1))
-        self.value_fc1.weight.data.uniform_(*hidden_init(self.value_fc1))
-        self.value_fc2.weight.data.uniform_(*hidden_init(self.value_fc2))
+    def _set_networks(self):
+        self.state_fc_1 = nn.Linear(self.ds, self.dim_dense_1)
+        self.bn1 = nn.BatchNorm1d(self.dim_dense_1)
+        self.state_fc_2 = nn.Linear(self.dim_dense_1,self.dim_dense_2)
+        self.hidden_fc_1 = nn.Linear(self.dim_dense_2+self.da, self.dim_dense_2)
+        self.hidden_fc_2 = nn.Linear(self.dim_dense_2,self.dim_dense_3)
+        self.output_fc = nn.Linear(self.dim_dense_3,1)
+        return
+    def _reset_parameters(self):
+        self.state_fc_1.weight.data.uniform_(*hidden_init(self.state_fc_1))
+        self.state_fc_2.weight.data.uniform_(*hidden_init(self.state_fc_2))
+        self.hidden_fc_1.weight.data.uniform_(*hidden_init(self.hidden_fc_1))
+        self.hidden_fc_2.weight.data.uniform_(*hidden_init(self.hidden_fc_2))
         
         self.output_fc.weight.data.uniform_(*hidden_init(self.output_fc))
 
     def forward(self, states, action):
-        xs = F.leaky_relu(self.bn1(self.state_fc(states)))
-        xs = F.leaky_relu(self.state_fc1(xs))
+        xs = F.leaky_relu(self.bn1(self.state_fc_1(states)))
+        xs = F.leaky_relu(self.state_fc_2(xs))
         x = torch.cat((xs, action), dim=1)
-        x = F.leaky_relu(self.value_fc1(x))
-        x = F.leaky_relu(self.value_fc2(x))
-        #x = F.leaky_relu(self.bn2(self.value_fc2(x)))
+        x = F.leaky_relu(self.hidden_fc_1(x))
+        x = F.leaky_relu(self.hidden_fc_2(x))
         return self.output_fc(x)
 
 

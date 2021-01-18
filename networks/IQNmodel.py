@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from config import Configuration
+from ..utils.config import Configuration
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def hidden_init(layer):

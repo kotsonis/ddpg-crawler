@@ -5,8 +5,7 @@ from collections import deque
 import matplotlib.pyplot as plt
 import os as os
 
-import config as config
-from agent import DPG
+from .agents.base_agent import DPG
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 env = UnityEnvironment(file_name='../../deep-reinforcement-learning/p2_continuous-control/Crawler_Windows_x86_64/Crawler.exe')

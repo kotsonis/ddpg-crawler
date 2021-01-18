@@ -3,8 +3,8 @@ import numpy as np
 import torch
 from collections import deque
 import os as os
-import config as config
-from agent import DPG
+import utils.config as config
+import agents.base_agent
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 hyper_params = config.Configuration()

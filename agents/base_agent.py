@@ -3,6 +3,7 @@
 usage : foo = Agent(**kwargs)
         foo.train(num_iterations)
         foo.play(num_episodes)
+        action(s) = foo.act(state(s))
 """
 import os
 import random
@@ -16,12 +17,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tensorboardX import SummaryWriter
 from collections import deque
-from utils import OUNoise
+from utils.OUNoise import OUNoise
 import copy
-
+import datetime
 from networks import models
-from utils.buffers import PrioritizedReplayBuffer
+from utils.priority_buffers import PrioritizedReplayBuffer
 
+# global config class to share command line/default parameters across modules
 config = flags.FLAGS
 flags.DEFINE_float(
     name='eps_start',
@@ -59,8 +61,15 @@ flags.DEFINE_integer(
     name='learn_every',
     default=4,
     help='number of environment interactions for every training step')
-
-def tile(a, dim, n_tile):
+flags.DEFINE_float(
+    name='gamma',
+    default=0.99,
+    help='discount factor for future rewards (0,1]')
+flags.DEFINE_float(
+    name='soft_update_tau',
+    default = 0.001,
+    help='soft update factor for copying online actor/critic into target')
+def tile(a, dim, n_tile, device):
     """creates torch.tensor by repeating a dimension n_tile times."""
     init_dim = a.size(dim)
     repeat_idx = [1] * a.dim()
@@ -82,10 +91,11 @@ class Agent():
         self.eps_minimum = kwargs.get('eps_minimum', config.eps_minimum)
         self.eps_decay = kwargs.get('eps_decay', config.eps_decay)
         self.eps = self.eps_start
+        self.tau = kwargs.get('soft_update_tau', config.soft_update_tau)
         self.learn_every = kwargs.setdefault('learn_every',config.learn_every)
-        
+        self.gamma = kwargs.setdefault('gamma', config.gamma)
         logging.info('Create an Agent type %s', __name__)
-        
+        self.save_counter = 0
         #process Unity environment details
         self.env = env
         self.brain_name = env.brain_names[0]
@@ -95,7 +105,7 @@ class Agent():
         # create replay buffer
         replay_buffer_class = kwargs.setdefault('replay_buffer_class',PrioritizedReplayBuffer)
         self.memory = replay_buffer_class(**kwargs)
-        self.noise = OUNoise.OUNoise(self.da)
+        self.noise = OUNoise(self.da)
         #create actor & critic networks
         actor_dnn_class = kwargs.setdefault('actor_dnn_class',models.Actor)
         self.actor = actor_dnn_class(**kwargs).to(self.device)
@@ -131,39 +141,45 @@ class Agent():
         
         # common training / playing parameters
         self.max_frames_per_episode = config.max_frames_per_episode
-
+        self.model_save_period = 1000
         self.iteration = 0
-
-    def act(self,states, add_noise=True):
-        """ act according to target policy based on state """
-
-        # move states into torch tensor on device
-        state = torch.FloatTensor(states).to(self.device)
-        # turn off training mode
-        self.target_actor.eval()
-        
-        with torch.no_grad():
-            action = self.target_actor(state).cpu().data.numpy()
-            # if we are being stochastic, add noise weighted by exploration
-            if add_noise:
-                action += self.eps*self.noise.sample().data.numpy()
-        self.target_actor.train()
-
-        return np.clip(action, -1, 1)  # TODO: clip according to Unity environment feedback
-    
-    def step(self, state, action, reward, next_state, done):
-        """Processes one step of Agent/environment interaction and invokes a learning step accordingly."""
-        # Save experience / reward
-        self.memory.add(state=state,action=action,reward=reward,next_state=next_state,done=done)
-        self.t_step += 1
-        if (self.t_step < 2000) : return self.train_step
-        # Learn every UPDATE_EVERY time steps.
-        if (self.t_step + 1) % self.learn_every == 0:
-            # check if there are enough samples in memory for training
-            if self.memory.enough_samples():
-                self.learn()
-        return self.train_step
-
+        self.log_dir = kwargs.setdefault('log_dir', config.log_dir)
+        self.model_save_dir = os.path.join(self.log_dir, 'model')
+        if not os.path.exists(self.model_save_dir):
+            os.makedirs(self.model_save_dir)
+        ts = datetime.datetime.now().replace(microsecond=0).strftime("%Y%m%d_%H%M%S")
+        self.writer = SummaryWriter(os.path.join(self.log_dir, 'tb',ts))
+        self.tensorboard_update_period = 50
+    def save_model(self, path=None):
+        """Saves the model."""
+        data = {
+            'iteration': self.iteration,
+            'actor_state_dict': self.actor.state_dict(),
+            'target_actor_state_dict': self.target_actor.state_dict(),
+            'critic_state_dict': self.critic.state_dict(),
+            'target_critic_state_dict': self.target_critic.state_dict(),
+            'actor_optim_state_dict': self.actor_optimizer.state_dict(),
+            'critic_optim_state_dict': self.critic_optimizer.state_dict()
+        }
+        torch.save(data, path)
+    def load_model(self, **kwargs):
+            """loads a model from a given path."""
+            load_path = kwargs.setdefault(
+                                        'path',
+                                        config.load_model)
+            checkpoint = torch.load(load_path)
+            self.iteration = checkpoint['iteration']
+            self.critic.load_state_dict(checkpoint['critic_state_dict'])
+            self.target_critic.load_state_dict(checkpoint['target_critic_state_dict'])
+            self.actor.load_state_dict(checkpoint['actor_state_dict'])
+            self.target_actor.load_state_dict(checkpoint['target_actor_state_dict'])
+            self.critic_optimizer.load_state_dict(checkpoint['critic_optim_state_dict'])
+            self.actor_optimizer.load_state_dict(checkpoint['actor_optim_state_dict'])
+            self.critic.train()
+            self.target_critic.train()
+            self.actor.train()
+            self.target_actor.train()
+            self.logger.info('Loaded model: {}'.format(load_path))
     def play(self,
             episodes=10,
             max_frames_per_episode=1000,
@@ -216,126 +232,187 @@ class Agent():
                     episode,
                     np.mean(agent_scores),
                     np.mean(scores)))
-
     def train(self, **kwargs):
         self.training_iterations = kwargs.setdefault('training_iterations', config.training_iterations)
+        self.memory.compute_beta_decay(self.training_iterations)
         env = self.env
         scores = []                                 # list containing scores from each episode
         scores_window = deque(maxlen=100)           # last 100 scores
-        env_info = self.env.reset(train_mode=False)[self.brain_name]
+        env_info = self.env.reset(train_mode=True)[self.brain_name]
         num_agents = len(env_info.agents)
         states = env_info.vector_observations
         agent_scores = np.zeros(num_agents)         # initialize the score (for each agent)
         
+        self.mean_reward = 0
+        self.mean_return = 0
+        self.mean_loss_q = 0
+        self.mean_loss_p = 0
+        self.mean_loss_l = 0
+        self.mean_est_q = 0
+        self.min_td = 0
+        self.max_td = 0
+
         i_episode = 0
         prev_iteration = 0
         save_counter = 0
-        t_step = 0
+        self.t_step = 0
         step = 0
         total_progress = tqdm(
                              total=self.training_iterations,
-                             desc='step {} mean reward {:3.2f}'.format(self.iteration, np.mean(scores_window)))
+                             desc='step {} mean reward {:3.2f}'.format(self.iteration, self.mean_return))
         
-        
+        solution_found = False
+        solution = 1200
+
         while self.iteration < self.training_iterations:
-            for it in trange(15, leave=False, desc='Episodes {:3d}-{:3d}'.format(i_episode, i_episode+15)):
-                i_episode += 1
-                env_info = env.reset(train_mode=True)[self.brain_name] # reset the environment
-                states = env_info.vector_observations             # get the current state of each agent
-                agent_scores = np.zeros(num_agents)
+            #for it in trange(15, leave=False, desc='Episodes {:3d}-{:3d}'.format(i_episode, i_episode+15)):
+            i_episode += 1
+            #env_info = env.reset(train_mode=True)[self.brain_name] # reset the environment
+            states = env_info.vector_observations             # get the current state of each agent
+            agent_scores = np.zeros(num_agents)
                 
-                #agent.noise.reset()
-                while True: # each frame
-                    actions = self.act(states, add_noise=True)
-                    step += 1
-                    env_info = env.step(actions)[self.brain_name]          # send all actions to tne environment
-                    next_states = env_info.vector_observations        # get next state (for each agent)
-                    rewards = env_info.rewards                        # get reward (for each agent)
-                    if (np.any(np.isnan(rewards))): 
-                        print('got a NaN reward. Need to fix it.')
-                    rewards = np.nan_to_num(rewards,nan=-5.0)
-                    dones = env_info.local_done                       # see if episode finished
-                    #if frames < 999: rewards += np.array(dones)*-5.0
-                    self.step(states, actions, rewards, next_states, dones)
+            self.noise.reset()
+            while True: # each frame
+                actions = self.act(states, add_noise=True)
+                step += 1
+                env_info = env.step(actions)[self.brain_name]          # send all actions to tne environment
+                next_states = env_info.vector_observations        # get next state (for each agent)
+                rewards = env_info.rewards                        # get reward (for each agent)
+                if (np.any(np.isnan(rewards))): 
+                    print('got a NaN reward. Need to fix it.')
+                rewards = np.nan_to_num(rewards,nan=-5.0)
+                agent_scores += rewards                           # update the score (for each agent)
+                self.mean_rewards = np.mean(agent_scores)
+                dones = env_info.local_done                       # see if episode finished
+                #if frames < 999: rewards += np.array(dones)*-5.0
+                self.step(states, actions, rewards, next_states, dones)
                 
-                    # update progress bar
-                    if (self.iteration % 10):
-                        total_progress.update(self.iteration-prev_iteration)
-                        prev_iteration = self.iteration
-                    t_step_prev = t_step
-                    # saving and logging
-                    if self.iteration % model_save_period == 0:
-                        self.save_model(os.path.join(model_save_dir, 'model_{:4d}.pt'.format(save_counter)))
-                        save_counter += 1
-                    self.write_tensorboard()
-                    agent_scores += rewards                           # update the score (for each agent)
-                    states = next_states                              # roll over states to next time step
-                    if np.any(dones):                                 # exit loop if episode finished
-                        break
+                # update progress bar
+                if (self.iteration+1) % 10 == 0:
+                    total_progress.update(self.iteration-prev_iteration)
+                    total_progress.set_description('step {} mean reward {:3.2f}'.format(self.iteration, self.mean_reward))
+                    prev_iteration = self.iteration
+                    
+                states = next_states                              # roll over states to next time step
+                if np.any(dones):                                 # exit loop if episode finished
+                    break
                 
-                # save latest model
-                self.save_model(os.path.join(model_save_dir, 'model_latest.pt'))
-                
-                scores.append(np.mean(agent_scores))              # store episodes mean reward over agents
-                scores_window.append(np.mean(agent_scores))       # save most recent score
+            scores.append(np.mean(agent_scores))              # store episodes mean reward over agents
+            self.mean_return = np.mean(agent_scores)
+            scores_window.append(np.mean(agent_scores))       # save most recent score
             
             if i_episode % 100 == 0:
-                print('\rEpisodes: {}\t 100 episode mean score: {:.2f}\t training to go: {:.0f}, eps: {:.2f}'.format(
-                    i_episode, np.mean(scores_window), total_train_steps - t_step, agent.eps ))
-                agent.save_models(hyper_params.model_dir)
-                if np.mean(scores_window)>=solution:
-                    if ( not solution_found):
-                        print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode-100, np.mean(scores_window)))
-                        solution_num_episodes = i_episode-100
-                        solution_found = True
-                        break
-            
-    def write_tensorboard(self):
-        """Writes training data to tensorboard summary writer. Should be overloaded by sub-classes."""
-        it = self.iteration
-        writer.add_scalar('return', self.mean_return, it)
-        writer.add_scalar('reward', self.mean_reward, it)
-        writer.add_scalar('loss_q', self.mean_loss_q, it)
-        writer.add_scalar('loss_p', self.mean_loss_p, it)
-        writer.add_scalar('loss_l', self.mean_loss_l, it)
-        writer.add_scalar('mean_q', self.mean_est_q, it)
-        writer.flush()
+                print('\rEpisodes: {}\t 100 episode mean score: {:.2f}'.format(
+                    i_episode, np.mean(scores_window)))
+         
+            if np.mean(scores_window)>=solution:
+                if ( not solution_found):
+                    print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode-100, np.mean(scores_window)))
+                    solution_num_episodes = i_episode-100
+                    solution_found = True
+                    break         
 
-    def load_model(self, **kwargs):
-            """
-            loads a model from a given path
-            :param path: (str) file path (.pt file)
-            """
-            load_path = kwargs.setdefault(
-                                        'path',
-                                        config.load_model)
-            checkpoint = torch.load(load_path)
-            self.iteration = checkpoint['iteration']
-            self.critic.load_state_dict(checkpoint['critic_state_dict'])
-            self.target_critic.load_state_dict(checkpoint['target_critic_state_dict'])
-            self.actor.load_state_dict(checkpoint['actor_state_dict'])
-            self.target_actor.load_state_dict(checkpoint['target_actor_state_dict'])
-            self.critic_optimizer.load_state_dict(checkpoint['critic_optim_state_dict'])
-            self.actor_optimizer.load_state_dict(checkpoint['actor_optim_state_dict'])
-            self.critic.train()
-            self.target_critic.train()
-            self.actor.train()
-            self.target_actor.train()
-            self.logger.info('Loaded model: {}'.format(load_path))
-    def save_model(self, path=None):
-        """Saves the model.
-        :param path: (str) file path (.pt file)
-        """
-        data = {
-            'iteration': self.iteration,
-            'actor_state_dict': self.actor.state_dict(),
-            'target_actor_state_dict': self.target_actor.state_dict(),
-            'critic_state_dict': self.critic.state_dict(),
-            'target_critic_state_dict': self.target_critic.state_dict(),
-            'actor_optim_state_dict': self.actor_optimizer.state_dict(),
-            'critic_optim_state_dict': self.critic_optimizer.state_dict()
-        }
-        torch.save(data, path)
+    def act(self,states, add_noise=True):
+        """ act according to target policy based on state """
+        # move states into torch tensor on device
+        state = torch.FloatTensor(states).to(self.device)
+        # turn off training mode
+        self.target_actor.eval()
+        with torch.no_grad():
+            action = self.target_actor(state).cpu().data.numpy()
+            # if we are being stochastic, add noise weighted by exploration
+            if add_noise:
+                action += self.eps*self.noise.sample().data.numpy()
+        self.target_actor.train()
+        return np.clip(action, -1, 1)  # TODO: clip according to Unity environment feedback
+
+    def step(self, state, action, reward, next_state, done):
+        """Processes one step of Agent/environment interaction and invokes a learning step accordingly."""
+        # Save experience / reward
+        self.memory.add(state=state,action=action,reward=reward,next_state=next_state,done=done)
+        self.t_step += 1
+        if (self.t_step < 2000) : return self.iteration
+        # Learn every UPDATE_EVERY time steps.
+        if (self.t_step + 1) % self.learn_every == 0:
+            # check if there are enough samples in memory for training
+            if self.memory.enough_samples():
+                self._learn_step()
+                self._next_iter()
+        return self.iteration
+    def _learn_step(self):
+        """performs one learning step"""
+        # ---------------- sample a batch of experiences ---------------------- #
+        states,actions,rewards,next_states,dones, weights, indices = self.memory.sample()
+        # decay beta for next sampling (Prioritized Experience Replay related)
+        self.memory.decay_beta()
+        
+        # unravel S,A,R,S,done in case we have stored a multi-agent experience
+        B = states.shape[0]
+        states = states.view(-1,self.ds)
+        actions = actions.view(-1,self.da)
+        rewards = rewards.view(-1,1)
+        next_states = next_states.view(-1,self.ds)
+        dones = dones.view(-1,1)
+        # -------------------- get target Q value ----------------------------- #
+        future_action = self.target_actor(next_states)
+        q_future_state = self.target_critic(next_states, future_action)
+        q_future_state *= (1-dones) 
+        q_target = rewards + self.gamma*q_future_state
+        # -------------------- get current Q value ---------------------------- #
+        q_online = self.critic(states,actions)
+        # store for tensorboard and priority calculation
+        with torch.no_grad():
+            current_q = q_online.detach()
+            self.mean_est_q = current_q.mean()
+        # --------------------- compute critic loss --------------------------- #
+        error_loss = q_target - q_online
+        loss = F.smooth_l1_loss(q_target, q_online,reduction='none')
+        loss = loss.view(B,-1)
+        loss = loss.mean(dim=-1)
+        critic_loss = (weights*loss.view(B,-1))
+        critic_loss_batch = critic_loss.mean()
+        # store loss for tensorboard
+        with torch.no_grad():
+            self.mean_loss_q = critic_loss_batch
+        # -------------------- optimize the critic --------------------------- #
+        self.critic_optimizer.zero_grad()
+        critic_loss_batch.backward()
+        self.critic_optimizer.step()
+        # -------------------- compute actor loss ---------------------------- #
+        # we want maximum reward (Q) so loss is negative of current Q
+        actor_loss = - self.critic(states, self.actor(states)).mean(dim=1).mean()
+        # store loss for tensorboard
+        with torch.no_grad():
+            self.mean_loss_p = actor_loss
+        # ------------------- optimize the actor ----------------------------- #
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor_optimizer.step()
+        # ------------------- Prioritized Replay Buffer ---------------------- #
+        # ------------ update priorities in the replay buffer ---------------- #
+        # calculate TD_error/Q. Avoid exploding priority through division by <1
+        with torch.no_grad():
+            current_q = torch.clamp_min(current_q,1.0)
+            td_error = error_loss.abs()
+            td_error = td_error/(current_q.abs()+1e-6)
+            td_error = td_error.view(B,-1)
+            td_error = td_error.mean(dim=1)
+            self.min_td = td_error.min()
+            self.max_td = td_error.max()
+            new_p = td_error.cpu().data.numpy().clip(0,2.0)
+            # ------------------ update PER priorities ----------------------- #
+            self.memory.update_priorities(indices, new_p.tolist())
+        # ------------------ soft update target networks --------------------- #
+        self._soft_update(self.critic, self.target_critic)
+        self._soft_update(self.actor, self.target_actor)
+        # ------------------ hard update target networks --------------------- #
+        if (((self.iteration +1) % 1000) == 0): 
+            self._hard_update(self.critic, self.target_critic)
+            self._hard_update(self.actor, self.target_actor)  
+        # ----------------- update noise and exploration --------------------- #
+        self._next_eps()
+        return
+
     def _soft_update(self, local_model, target_model):
         """Updates target model parameters with local.
 
@@ -343,4 +420,34 @@ class Agent():
         """
         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
             target_param.data.copy_(self.tau*local_param.data + (1.0-self.tau)*target_param.data)
-    
+    def _hard_update(self,local_model,target_model):
+        """copies local model parameters into target.
+
+        """
+        for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
+            target_param.data.copy_(local_param.data)
+    def _next_eps(self):
+        """updates exploration factor"""
+        self.eps = max(self.eps_minimum, self.eps*self.eps_decay)    
+    def _next_iter(self):
+        """increases training iterator and performs logging/model saving"""
+        self.iteration += 1
+        # save latest model
+        self.save_model(os.path.join(self.model_save_dir, 'model_latest.pt'))
+        if (self.iteration+1) % self.model_save_period ==0:
+            self.save_model(os.path.join(self.model_save_dir, 'model_{:4d}.pt'.format(self.save_counter)))
+            self.save_counter += 1
+        if (self.iteration+1) % self.tensorboard_update_period ==0:
+            self._tb_write()
+        return self.iteration
+    def _tb_write(self):
+        """Writes training data to tensorboard summary writer. Should be overloaded by sub-classes."""
+        it = self.iteration
+        self.writer.add_scalar('return', self.mean_return, it)
+        self.writer.add_scalar('eps', self.eps, it)
+        self.writer.add_scalar('loss_q', self.mean_loss_q, it)
+        self.writer.add_scalar('loss_p', self.mean_loss_p, it)
+        self.writer.add_scalar('min_td', self.min_td, it)
+        self.writer.add_scalar('max_td', self.max_td, it)
+        self.writer.add_scalar('mean_q', self.mean_est_q, it)
+        self.writer.flush()

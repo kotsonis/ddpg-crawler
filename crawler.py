@@ -2,8 +2,10 @@ import os
 from absl import app
 from absl import logging
 from absl import flags
+import multiprocessing as mp
+
 from unityagents import UnityEnvironment
-from agents import base_agent
+from agents import spdg_agent
 
 #import numpy as np
 #import torch
@@ -31,9 +33,10 @@ flags.DEFINE_integer(name='episodes', default=20,
 def main(argv):
     del argv
     logging.get_absl_handler().use_absl_log_file()
+    logging.set_verbosity('debug')
     # modify some parameters of training
-    env = UnityEnvironment(file_name=config.env)
-    model = base_agent.Agent(
+    env = UnityEnvironment(file_name=config.env, worker_id = 2)
+    model = spdg_agent.SPDG(
         device=config.device,
         env=env)
 
@@ -52,4 +55,5 @@ def main(argv):
     env.close()
 
 if __name__ == '__main__':
+    mp.set_start_method('spawn')
     app.run(main)
