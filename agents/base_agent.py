@@ -277,10 +277,10 @@ class Agent():
                 step += 1
                 env_info = env.step(actions)[self.brain_name]          # send all actions to tne environment
                 next_states = env_info.vector_observations        # get next state (for each agent)
-                rewards = env_info.rewards                        # get reward (for each agent)
+                rewards = np.array(env_info.rewards)                        # get reward (for each agent)
                 if (np.any(np.isnan(rewards))): 
                     print('got a NaN reward. Need to fix it.')
-                rewards = np.nan_to_num(rewards,nan=-5.0)
+                    rewards = np.nan_to_num(rewards, copy=True, nan=-5.0, posinf=5.0, neginf=-5.0)
                 agent_scores += rewards                           # update the score (for each agent)
                 self.mean_rewards = np.mean(agent_scores)
                 dones = env_info.local_done                       # see if episode finished
