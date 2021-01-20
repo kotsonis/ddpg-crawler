@@ -1,0 +1,45 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name":"Crawler Train",
+            "type":"python",
+            "request":"launch",
+            "program":"crawler.py",
+            "console":"integratedTerminal",
+            "args": ["--train", 
+                     "--log_dir", "log_spdg",
+                     "--training_iterations", "50000",
+                     "--eps_minimum", "0.3"
+                     ]
+        },
+        {
+            "name":"Crawler continue training",
+            "type":"python",
+            "request":"launch",
+            "program":"crawler.py",
+            "console":"integratedTerminal",
+            "args": ["--train", 
+                     "--log_dir", "log",
+                     "--training_iterations", "1000", 
+                     "--load", "./log/model/model_latest.pt",
+                    "--eps_minimum", "0.3"]
+        },{
+            "name": "Crawler Play",
+            "type": "python",
+            "request": "launch",
+            "program": "crawler.py",
+            "console": "integratedTerminal",
+            "args":["--play", "--episodes", "100", "--load", "./model/model_latest.pt"],
+        },{
+            "name": "Run current file",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        }
+    ]
+}

@@ -5,13 +5,7 @@ from absl import flags
 import multiprocessing as mp
 
 from unityagents import UnityEnvironment
-from agents import spdg_agent
-
-#import numpy as np
-#import torch
-#import torch.nn as nn
-#from tensorboardX import SummaryWriter
-#from tqdm import tqdm
+from agents.spdg import SamplingAgent
 
 config = flags.FLAGS
 flags.DEFINE_string(name='device', default='cpu',
@@ -36,16 +30,11 @@ def main(argv):
     logging.set_verbosity('debug')
     # modify some parameters of training
     env = UnityEnvironment(file_name=config.env, worker_id = 2)
-    model = spdg_agent.SPDG(
-        device=config.device,
-        env=env)
-
+    model = SamplingAgent(device=config.device,env=env)
     if config.load is not None:
-        model.load_model(config.load)
+        model.load_model(load_model = config.load)
     if config.play is not None:
-        model.play(
-            episodes= config.episodes,
-            frames = 1000)
+        model.play(episodes= config.episodes,frames = 1000)
     if config.train is not None:
         model.train(
             training_iterations=config.training_iterations,
