@@ -281,9 +281,10 @@ class Agent():
                     #     bugged_rewards,rewards))
                     
                 # normalize rewards as pct
+                rewards = rewards - dones*10.0  # penalize moves that end the episode
                 rewards = rewards/10.0
                 dones = np.array(env_info.local_done)                       # see if episode finished
-                rewards = rewards - dones*5.0  # penalize moves that end the episode
+                
                 #if frames < 999: rewards += np.array(dones)*-5.0
                 self.step(states, actions, rewards, next_states, dones)
                 

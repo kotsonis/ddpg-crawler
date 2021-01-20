@@ -103,7 +103,7 @@ class NStepReplay(ReplayBuffer):
         
         
         #initialize a deque for temporary storage
-        self.returns = [deque(maxlen=self.n_step) for _ in range(self.num_agents)
+        self.returns = deque(maxlen=self.n_step)
         
         return
 
