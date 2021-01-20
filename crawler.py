@@ -26,6 +26,8 @@ flags.DEFINE_integer(name='episodes', default=20,
 
 def main(argv):
     del argv
+    if not os.path.exists(config.log_dir):
+            os.makedirs(config.log_dir)
     logging.get_absl_handler().use_absl_log_file()
     logging.set_verbosity('debug')
     # modify some parameters of training

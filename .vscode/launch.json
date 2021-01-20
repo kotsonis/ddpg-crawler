@@ -13,8 +13,24 @@
             "args": ["--train", 
                      "--log_dir", "log_spdg",
                      "--training_iterations", "50000",
+                     "--device", "cuda",
                      "--eps_minimum", "0.3"
                      ]
+        },
+        {
+            "name":"Crawler training - Theo",
+            "type":"python",
+            "request":"launch",
+            "program":"crawler.py",
+            "console":"integratedTerminal",
+            "args": ["--train", 
+                     "--log_dir", "log_spdg_50_nstep",
+                     "--training_iterations", "50000", 
+                     "--env", "./Crawler_Windows_x86_64/Crawler.exe",
+                     "--device", "cuda",
+                     "--memory_size", "20000",
+                     "--n_step", "50"
+                    ]
         },
         {
             "name":"Crawler continue training - Theo",

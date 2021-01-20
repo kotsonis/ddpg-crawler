@@ -47,6 +47,8 @@ flags.DEFINE_float(name='gamma',default=0.99,
     help='discount factor for future rewards (0,1]')
 flags.DEFINE_float(name='soft_update_tau',default = 0.001,
     help='soft update factor for copying online actor/critic into target')
+flags.DEFINE_bool(name='episodic',default = False,
+    help='train on episodes or max_frames_per_episode(True)')
 
 def tile(a, dim, n_tile, device):
     """creates torch.tensor by repeating a dimension n_tile times."""
@@ -73,6 +75,7 @@ class Agent():
         self.tau = kwargs.get('soft_update_tau', config.soft_update_tau)
         self.learn_every = kwargs.setdefault('learn_every',config.learn_every)
         self.gamma = kwargs.setdefault('gamma', config.gamma)
+        self.episodic = kwargs.get('episodic', config.episodic)
         logging.info('Create an Agent type %s', __name__)
         self.save_counter = 0
         #process Unity environment details
@@ -251,19 +254,21 @@ class Agent():
         
         while self.iteration < self.training_iterations:
             #for it in trange(15, leave=False, desc='Episodes {:3d}-{:3d}'.format(i_episode, i_episode+15)):
+            env_info = self.env.reset(train_mode=True)[self.brain_name]
             i_episode += 1
             #env_info = env.reset(train_mode=True)[self.brain_name] # reset the environment
             states = env_info.vector_observations             # get the current state of each agent
             agent_scores = np.zeros(num_agents)
             frames = 0
             self.noise.reset()
-            while True: # each frame
+            while frames < self.max_frames_per_episode: # each frame
                 actions = self.act(states, add_noise=True)
                 step += 1
                 frames += 1
                 env_info = env.step(actions)[self.brain_name]          # send all actions to tne environment
                 next_states = env_info.vector_observations        # get next state (for each agent)
                 rewards = np.array(env_info.rewards)                        # get reward (for each agent)
+                agent_scores += rewards                           # update the score (for each agent)
                 if (np.any(np.isnan(rewards))): 
                     break
                     # bugged_rewards = rewards
@@ -271,7 +276,8 @@ class Agent():
                     # logging.info('got a NaN in rewards.\nrewards={}\n fixed it as: {}'.format(
                     #     bugged_rewards,rewards))
                     
-                agent_scores += rewards                           # update the score (for each agent)
+                # normalize rewards as pct
+                rewards = rewards/10.0
                 dones = np.array(env_info.local_done)                       # see if episode finished
                 rewards = rewards - dones*5.0  # penalize moves that end the episode
                 #if frames < 999: rewards += np.array(dones)*-5.0
@@ -285,7 +291,7 @@ class Agent():
                     prev_iteration = self.iteration
                     
                 states = next_states                              # roll over states to next time step
-                if np.any(dones):                                 # exit loop if episode finished
+                if self.episodic and np.any(dones):                                 # exit loop if episode finished                    
                     break
             fpe_window.append(frames)
             scores.append(np.mean(agent_scores))              # store episodes mean reward over agents
