@@ -270,8 +270,9 @@ class Agent():
                 step += 1
                 frames += 1
                 env_info = env.step(actions)[self.brain_name]          # send all actions to tne environment
-                next_states = env_info.vector_observations        # get next state (for each agent)
+                next_states = np.array(env_info.vector_observations)        # get next state (for each agent)
                 rewards = np.array(env_info.rewards)                        # get reward (for each agent)
+                dones = np.array(env_info.local_done)                       # see if episode finished
                 agent_scores += rewards                           # update the score (for each agent)
                 if (np.any(np.isnan(rewards))): 
                     break
@@ -281,9 +282,10 @@ class Agent():
                     #     bugged_rewards,rewards))
                     
                 # normalize rewards as pct
+                
                 rewards = rewards - dones*10.0  # penalize moves that end the episode
                 rewards = rewards/10.0
-                dones = np.array(env_info.local_done)                       # see if episode finished
+                
                 
                 #if frames < 999: rewards += np.array(dones)*-5.0
                 self.step(states, actions, rewards, next_states, dones)
