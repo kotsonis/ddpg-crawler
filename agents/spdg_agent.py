@@ -152,8 +152,6 @@ class SPDG(nstep_agents.nstepDDPG):
             self.min_td = td_error.min()
             self.max_td = td_error.max()
             new_p = td_error.cpu().data.numpy().clip(0,5.0)
-            if np.isnan(np.sum(new_p)):
-                logging.fatal('got NaN in priorities')
             # ------------------ update PER priorities ----------------------- #
             self.memory.update_priorities(indices, new_p.tolist())
         
