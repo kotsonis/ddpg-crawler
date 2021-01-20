@@ -10,7 +10,7 @@ from tensorboardX import SummaryWriter
 from collections import deque
 import copy
 
-import buffers
+import utils
 import networks
 from agents.base import tile
 from agents.nstep import nstepDDPG

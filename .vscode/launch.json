@@ -17,16 +17,18 @@
                      ]
         },
         {
-            "name":"Crawler continue training",
+            "name":"Crawler continue training - Theo",
             "type":"python",
             "request":"launch",
             "program":"crawler.py",
             "console":"integratedTerminal",
             "args": ["--train", 
                      "--log_dir", "log",
-                     "--training_iterations", "1000", 
-                     "--load", "./log/model/model_latest.pt",
-                    "--eps_minimum", "0.3"]
+                     "--training_iterations", "50000", 
+                     "--load", "./log_spdg/model/model_latest.pt",
+                     "--env", "./Crawler_Windows_x86_64/Crawler.exe",
+                     "--device", "cuda"
+                    ]
         },{
             "name": "Crawler Play",
             "type": "python",

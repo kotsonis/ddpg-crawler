@@ -265,10 +265,11 @@ class Agent():
                 next_states = env_info.vector_observations        # get next state (for each agent)
                 rewards = np.array(env_info.rewards)                        # get reward (for each agent)
                 if (np.any(np.isnan(rewards))): 
-                    bugged_rewards = rewards
-                    rewards = np.nan_to_num(rewards,nan=-5.0)
-                    logging.info('got a NaN in rewards.\nrewards={}\n fixed it as: {}'.format(
-                        bugged_rewards,rewards))
+                    break
+                    # bugged_rewards = rewards
+                    # rewards = np.nan_to_num(rewards,nan=-5.0)
+                    # logging.info('got a NaN in rewards.\nrewards={}\n fixed it as: {}'.format(
+                    #     bugged_rewards,rewards))
                     
                 agent_scores += rewards                           # update the score (for each agent)
                 dones = np.array(env_info.local_done)                       # see if episode finished
