@@ -77,6 +77,8 @@ class ReplayBuffer():
 
 flags.DEFINE_integer(name='n_step',default = 3,
                      help='Number of steps to lookahead the returns in replay buffer')
+flags.DEFINE_bool(name='unroll_agents', default = False,
+                     help='Should n_step unroll the experiences from each agent into separate experiences ?')
 
 class NStepReplay(ReplayBuffer):
     """replay buffer with n-step returns"""
@@ -94,11 +96,15 @@ class NStepReplay(ReplayBuffer):
 
         self.n_step = kwargs.setdefault('n_step', config.n_step)
         self.gamma = kwargs.setdefault('gamma', config.gamma)
+        self.unroll_agents = kwargs.get('unroll_agents', config.unroll_agents)
+        self.num_agents = kwargs.get('num_agents')+1
+
         super(NStepReplay, self).__init__(**kwargs)
         
         
         #initialize a deque for temporary storage
-        self.returns = deque(maxlen=self.n_step)
+        self.returns = [deque(maxlen=self.n_step) for _ in range(self.num_agents)
+        
         return
 
     def add(self, **kwargs):

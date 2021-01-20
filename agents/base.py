@@ -84,6 +84,10 @@ class Agent():
         self.brain = env.brains[env.brain_names[0]]
         self.da = kwargs.setdefault("action_size",self.brain.vector_action_space_size)
         self.ds = kwargs.setdefault("state_size",self.brain.vector_observation_space_size)
+
+        self.env_info = self.env.reset(train_mode=False)[self.brain_name]
+        self.num_agents = len(self.env_info.agents)
+        kwargs['num_agents'] = self.num_agents
         # create replay buffer
         replay_buffer_class = kwargs.setdefault('replay_buffer_class',replay.ReplayBuffer)
         self.memory = replay_buffer_class(**kwargs)
