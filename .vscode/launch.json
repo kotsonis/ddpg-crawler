@@ -23,7 +23,7 @@
             "program":"crawler.py",
             "console":"integratedTerminal",
             "args": ["--train", 
-                     "--log_dir", "log",
+                     "--log_dir", "log_spdg/",
                      "--training_iterations", "50000", 
                      "--load", "./log_spdg/model/model_latest.pt",
                      "--env", "./Crawler_Windows_x86_64/Crawler.exe",

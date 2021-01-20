@@ -2,6 +2,7 @@
 choleski.py
 tqdm_test.py
 models/
+model/
 *.pyperf
 *.log*
 # Unity environments
@@ -9,7 +10,7 @@ Reacher_Windows_x86_64/
 Crawler_Windows_x86_64/
 
 # tensorboard summaries
-tb/
+
 # vs-code
 .vs/
 
@@ -143,4 +144,3 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-agents/spdg_agent.py
