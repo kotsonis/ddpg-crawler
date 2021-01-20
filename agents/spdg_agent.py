@@ -75,7 +75,6 @@ class SPDG(nstep_agents.nstepDDPG):
         # store for tensorboard and priority calculation
         with torch.no_grad():
             current_q = q_online.detach().mean(1)
-            target_q = q_target.detach().mean(1)
             self.mean_est_q = current_q.mean()
 
         #q_target_sorted_indexes = torch.argsort(q_target, dim=-1)
@@ -107,6 +106,7 @@ class SPDG(nstep_agents.nstepDDPG):
         # store loss for tensorboard
         with torch.no_grad():
             self.mean_loss_q = critic_loss_batch.detach()
+            td_error = critic_loss.detach()
 
         #critic_loss = critic_loss.mean()
         # --------------------- compute critic loss ---------------------------- #
@@ -143,10 +143,8 @@ class SPDG(nstep_agents.nstepDDPG):
         # we do not want this to enter into computation graph for autograd
         with torch.no_grad():
             current_q = torch.clamp_min(current_q,1.0)
-            td_error = target_q - current_q
+            td_error = td_error.view(B,-1)
             td_error =  td_error.abs()
-            #td_error = td_error.view(B,-1)
-            
             td_error = td_error/(current_q.abs()+1e-6)
             td_error = td_error.view(batch_size,-1).mean(dim=1)
             self.min_td = td_error.min()
