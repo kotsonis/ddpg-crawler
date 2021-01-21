@@ -22,6 +22,8 @@ import copy
 import datetime
 import networks
 from utils import replay
+from utils import accumulator
+
 
 # global config class to share command line/default parameters across modules
 config = flags.FLAGS
@@ -47,7 +49,7 @@ flags.DEFINE_float(name='gamma',default=0.99,
     help='discount factor for future rewards (0,1]')
 flags.DEFINE_float(name='soft_update_tau',default = 0.001,
     help='soft update factor for copying online actor/critic into target')
-flags.DEFINE_bool(name='episodic',default = False,
+flags.DEFINE_bool(name='episodic',default = True,
     help='train on episodes or max_frames_per_episode(True)')
 
 def tile(a, dim, n_tile, device):
@@ -76,6 +78,8 @@ class Agent():
         self.learn_every = kwargs.setdefault('learn_every',config.learn_every)
         self.gamma = kwargs.setdefault('gamma', config.gamma)
         self.episodic = kwargs.get('episodic', config.episodic)
+        self.hasPER = False # assume no priority replay
+
         logging.info('Create an Agent type %s', __name__)
         self.save_counter = 0
         #process Unity environment details
@@ -89,14 +93,15 @@ class Agent():
         self.num_agents = len(self.env_info.agents)
         kwargs['num_agents'] = self.num_agents
         # create replay buffer
-        replay_buffer_class = kwargs.setdefault('replay_buffer_class',replay.ReplayBuffer)
+        replay_buffer_class = kwargs.pop('replay_buffer_class',replay.Buffer)
         self.memory = replay_buffer_class(**kwargs)
+        self.experiences = accumulator.Acumulator(num_agents=self.num_agents, replay_buffer_obj=self.memory)
         self.noise = OUNoise(self.da)
         #create actor & critic networks
-        actor_dnn_class = kwargs.setdefault('actor_dnn_class',networks.base.Actor)
+        actor_dnn_class = kwargs.pop('actor_dnn_class',networks.base.Actor)
         self.actor = actor_dnn_class(**kwargs).to(self.device)
         self.target_actor = actor_dnn_class(**kwargs).to(self.device)
-        critic_dnn_class = kwargs.setdefault('critic_dnn_class',networks.base.Critic)
+        critic_dnn_class = kwargs.pop('critic_dnn_class',networks.base.Critic)
         self.critic = critic_dnn_class(**kwargs).to(self.device)
         self.target_critic = critic_dnn_class(**kwargs).to(self.device)
 
@@ -195,7 +200,6 @@ class Agent():
                 env_info = self.env.step(actions)[self.brain_name]
                 next_states = env_info.vector_observations
                 rewards = np.array(env_info.rewards)
-                print(rewards.shape)
                 # fix NaN rewards of crawler environment, by penalizing a NaN reward
                 rewards = np.nan_to_num(rewards, nan=-5.0)
                 dones = env_info.local_done                       # see if episode finished
@@ -220,10 +224,14 @@ class Agent():
                     np.mean(agent_scores),
                     np.mean(scores)))
     def train(self, **kwargs):
-        self.training_iterations = kwargs.setdefault('training_iterations', config.training_iterations)
+        self.training_iterations = kwargs.pop('training_iterations', config.training_iterations)
         
         self.training_iterations += self.saved_iteration  # in case we are continuing training
-        self.memory.compute_beta_decay(self.training_iterations)
+        try:
+            self.memory.compute_beta_decay(self.training_iterations)
+        except AttributeError:
+            pass 
+
         env = self.env
         scores = []                                 # list containing scores from each episode
         scores_window = deque(maxlen=100)           # last 100 scores
@@ -274,21 +282,23 @@ class Agent():
                 rewards = np.array(env_info.rewards)                        # get reward (for each agent)
                 dones = np.array(env_info.local_done)                       # see if episode finished
                 agent_scores += rewards                           # update the score (for each agent)
-                if (np.any(np.isnan(rewards))): 
-                    break
-                    # bugged_rewards = rewards
-                    # rewards = np.nan_to_num(rewards,nan=-5.0)
-                    # logging.info('got a NaN in rewards.\nrewards={}\n fixed it as: {}'.format(
-                    #     bugged_rewards,rewards))
-                    
-                # normalize rewards as pct
-                
-                rewards = rewards - dones*10.0  # penalize moves that end the episode
+                if (np.any(np.isnan(rewards))):
+                    if self.num_agents > 1:
+                        offenders = np.argwhere(np.isnan(rewards))
+                        for i in offenders:
+                            next_states[i] = states[i]
+                            rewards[i] = -5.0
+                            dones[i] = 1
+                    else:
+                        next_states = states
+                        rewards = -5
+                        dones = 1
+                # normalize rewards as pct                
+                rewards = rewards - dones*5.0  # penalize moves that end the episode
                 rewards = rewards/10.0
                 
-                
                 #if frames < 999: rewards += np.array(dones)*-5.0
-                self.step(states, actions, rewards, next_states, dones)
+                self.step(state=states,action=actions,reward=rewards,next_state=next_states,done=dones)
                 
                 # update progress bar
                 if (self.iteration+1) % 10 == 0:
@@ -298,8 +308,15 @@ class Agent():
                     prev_iteration = self.iteration
                     
                 states = next_states                              # roll over states to next time step
-                if self.episodic and np.any(dones):                                 # exit loop if episode finished                    
-                    break
+                if self.episodic and np.any(dones):
+                    if self.num_agents > 1:
+                        done_agents = np.argwhere(dones).squeeze(-1)
+                        for i in done_agents:
+                            self.experiences.flush(i)
+                    else:
+                        break
+
+            self.experiences.flush(flush_all=True)
             fpe_window.append(frames)
             scores.append(np.mean(agent_scores))              # store episodes mean reward over agents
             self.mean_return = np.mean(agent_scores)
@@ -330,22 +347,66 @@ class Agent():
     def step(self, state, action, reward, next_state, done):
         """Processes one step of Agent/environment interaction and invokes a learning step accordingly."""
         # Save experience / reward
-        self.memory.add(state=state,action=action,reward=reward,next_state=next_state,done=done)
+        self.experiences.push(state=state,action=action,reward=reward,next_state=next_state,done=done)
         self.t_step += 1
         if (self.t_step < 2000) : return self.iteration
         # Learn every UPDATE_EVERY time steps.
         if (self.t_step + 1) % self.learn_every == 0:
             # check if there are enough samples in memory for training
-            if self.memory.enough_samples():
+            if self.memory.ready:
                 self._learn_step()
                 self._next_iter()
         return self.iteration
+    
+    def sample(self):
+        """samples from replay buffer.
+
+        provides dummy data for weights, indexes if not available in underlying buffer"""
+        self.memory.sample()
+        states = self.memory.states
+        actions = self.memory.actions
+        rewards = self.memory.rewards
+        next_states = self.memory.next_states
+        dones = self.memory.dones
+        B = len(dones) # get batch size
+
+        # get gammas from possible an n-step return buffer
+        try:
+            gammas = self.memory.gammas
+        except AttributeError:
+            gammas = torch.ones_like(dones)*self.gamma
+        # get weights and indexes from possibly a prioritized buffer
+        try:
+            weights = self.memory.weights
+            idxs = self.memory.idxes
+            self.memory.decay_beta() # decay the beta factor in the PER since we just sampled
+            self.hasPER = True
+        except AttributeError:
+            weights = torch.ones(size=(B,1))
+            idxs = []
+        return states, actions, rewards, next_states, dones, gammas, weights, idxs
+
+    def _update_memory(self):
+    # -------------- update priorities in the replay buffer ---------------- #
+        # calculate TD_error
+        # we do not want this to enter into computation graph for autograd
+        if (self.hasPER):
+            with torch.no_grad():
+                current_q = torch.clamp_min(self._current_q,1.0)
+                td_error = self._td_error.view(self.B,-1)
+                td_error =  td_error.abs()
+                td_error = td_error/(current_q.abs()+1e-6)
+                td_error = td_error.view(self.batch_size,-1).mean(dim=1)
+                self.min_td = td_error.min()
+                self.max_td = td_error.max()
+                new_p = td_error.cpu().data.numpy()
+                # ------------------ update PER priorities ----------------------- #
+                self.memory.update_priorities(indices, new_p.tolist())
+
     def _learn_step(self):
         """performs one learning step"""
         # ---------------- sample a batch of experiences ---------------------- #
-        states,actions,rewards,next_states,dones, weights, indices = self.memory.sample()
-        # decay beta for next sampling (Prioritized Experience Replay related)
-        self.memory.decay_beta()
+        states,actions,rewards,next_states,dones, gammas, weights, indices = self.sample()
         
         # unravel S,A,R,S,done in case we have stored a multi-agent experience
         B = states.shape[0]
@@ -391,18 +452,7 @@ class Agent():
         self.actor_optimizer.step()
         # ------------------- Prioritized Replay Buffer ---------------------- #
         # ------------ update priorities in the replay buffer ---------------- #
-        # calculate TD_error/Q. Avoid exploding priority through division by <1
-        with torch.no_grad():
-            current_q = torch.clamp_min(current_q,1.0)
-            td_error = error_loss.abs()
-            td_error = td_error/(current_q.abs()+1e-6)
-            td_error = td_error.view(B,-1)
-            td_error = td_error.mean(dim=1)
-            self.min_td = td_error.min()
-            self.max_td = td_error.max()
-            new_p = td_error.cpu().data.numpy().clip(0,2.0)
-            # ------------------ update PER priorities ----------------------- #
-            self.memory.update_priorities(indices, new_p.tolist())
+        self._update_memory()
         # ------------------ soft update target networks --------------------- #
         self._soft_update(self.critic, self.target_critic)
         self._soft_update(self.actor, self.target_actor)

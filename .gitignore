@@ -3,6 +3,8 @@ choleski.py
 tqdm_test.py
 models/
 model/
+log/
+log_spdg/
 *.pyperf
 *.log*
 # Unity environments

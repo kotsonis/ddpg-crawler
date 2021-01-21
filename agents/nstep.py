@@ -25,7 +25,7 @@ class nstepDDPG(agents.base.Agent):
         kwargs['replay_buffer_class']= replay.NStepPriorityReplay
         super(nstepDDPG,self).__init__(**kwargs)
 
-## override parent learn step function to use n-steps
+    ## override parent learn step function to use n-steps
     def _learn_step(self):
         """performs one learning step"""
         # ---------------- sample a batch of experiences ---------------------- #

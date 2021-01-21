@@ -5,7 +5,7 @@ from absl import flags
 import multiprocessing as mp
 
 from unityagents import UnityEnvironment
-from agents.spdg import SamplingAgent
+from agents.spdg import SDPGAgent
 from utils import replay
 
 config = flags.FLAGS
@@ -33,7 +33,7 @@ def main(argv):
     logging.set_verbosity('debug')
     # modify some parameters of training
     env = UnityEnvironment(file_name=config.env, worker_id = 2)
-    model = SamplingAgent(device=config.device,env=env, replay_buffer=replay.PriorityReplay)
+    model = SDPGAgent(device=config.device,env=env, replay_buffer=replay.PriorityReplay)
     if config.load is not None:
         model.load_model(load_model = config.load)
     if config.play is not None:

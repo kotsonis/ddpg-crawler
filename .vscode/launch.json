@@ -13,11 +13,24 @@
             "args": ["--train", 
                      "--log_dir", "log_spdg",
                      "--training_iterations", "50000",
-                     "--device", "cuda",
-                     "--eps_minimum", "0.3"
+                     "--eps_minimum", "0.3",
+                     "--memory_batch_size", "512",
                      ]
         },
         {
+            "name":"Crawler Continue",
+            "type":"python",
+            "request":"launch",
+            "program":"crawler.py",
+            "console":"integratedTerminal",
+            "args": ["--train", 
+                     "--log_dir", "log_spdg",
+                     "--training_iterations", "50000",
+                     "--eps_minimum", "0.3",
+                     "--memory_batch_size", "512",
+                     "--load", "./log_spdg/model/model_latest.pt"
+                     ]
+        },{
             "name":"Crawler training - Theo",
             "type":"python",
             "request":"launch",
@@ -51,7 +64,10 @@
             "request": "launch",
             "program": "crawler.py",
             "console": "integratedTerminal",
-            "args":["--play", "--episodes", "100", "--load", "./model/model_latest.pt"],
+            "args":["--play", 
+                "--log_dir", "log_spdg",
+                "--episodes", "100", 
+                "--load", "./SDPG_21012021_model_latest.pt"],
         },{
             "name": "Run current file",
             "type": "python",
