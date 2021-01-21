@@ -374,7 +374,7 @@ class Agent():
         try:
             gammas = self.memory.gammas
         except AttributeError:
-            gammas = torch.ones_like(dones)*self.gamma
+            gammas = torch.ones_like(dones,device=self.device)*self.gamma
         # get weights and indexes from possibly a prioritized buffer
         try:
             weights = self.memory.weights
@@ -382,7 +382,7 @@ class Agent():
             self.memory.decay_beta() # decay the beta factor in the PER since we just sampled
             self.hasPER = True
         except AttributeError:
-            weights = torch.ones(size=(B,1))
+            weights = torch.ones(size=(B,1),device=self.device)
             idxs = []
         return states, actions, rewards, next_states, dones, gammas, weights, idxs
 
