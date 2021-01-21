@@ -24,7 +24,7 @@
             "program":"crawler.py",
             "console":"integratedTerminal",
             "args": ["--train", 
-                     "--log_dir", "log_spdg",
+                     "--log_dir", "log_spdg/",
                      "--training_iterations", "50000",
                      "--eps_minimum", "0.3",
                      "--memory_batch_size", "512",
@@ -53,8 +53,10 @@
             "console":"integratedTerminal",
             "args": ["--train", 
                      "--log_dir", "log_spdg/",
+                     "--eps_minimum", "0.3",
                      "--training_iterations", "50000", 
-                     "--load", "./log_spdg/model/model_latest.pt",
+                     "--memory_batch_size", "512",
+                     "--load", "./working_models_bckup/model_latest.pt",
                      "--env", "./Crawler_Windows_x86_64/Crawler.exe",
                      "--device", "cuda"
                     ]
