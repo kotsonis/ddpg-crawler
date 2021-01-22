@@ -11,8 +11,10 @@
             "program":"crawler.py",
             "console":"integratedTerminal",
             "args": ["--train", 
-                     "--log_dir", "log_spdg",
+                     "--log_dir", "log_spdg_no_accumulator",
                      "--training_iterations", "50000",
+                     "--n_step", "20",
+                     "--eps_start", "0.99",                                  
                      "--eps_minimum", "0.3",
                      "--memory_batch_size", "512",
                      ]
@@ -26,11 +28,13 @@
             "args": ["--train", 
                      "--log_dir", "log_spdg/",
                      "--training_iterations", "50000",
-                     "--eps_minimum", "0.3",
+                     "--eps_start", "0.3",
+                     "--eps_minimum", "0.001",
                      "--memory_batch_size", "512",
-                     "--load", "./log_spdg/model/model_latest.pt"
+                     "--load", "./working_models_bckup/model_latest.pt"
                      ]
-        },{
+        },
+        {
             "name":"Crawler training - Theo",
             "type":"python",
             "request":"launch",
@@ -70,7 +74,7 @@
             "args":["--play", 
                 "--log_dir", "log_spdg",
                 "--episodes", "100", 
-                "--load", "./SDPG_21012021_model_latest.pt"],
+                "--load", "./working_models_bckup/model_latest.pt"],
         },{
             "name": "Crawler Play - Theo",
             "type": "python",

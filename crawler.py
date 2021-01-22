@@ -2,7 +2,6 @@ import os
 from absl import app
 from absl import logging
 from absl import flags
-import multiprocessing as mp
 
 from unityagents import UnityEnvironment
 from agents.spdg import SDPGAgent
@@ -33,7 +32,7 @@ def main(argv):
     logging.set_verbosity('debug')
     # modify some parameters of training
     env = UnityEnvironment(file_name=config.env, worker_id = 2)
-    model = SDPGAgent(device=config.device,env=env, replay_buffer=replay.PriorityReplay)
+    model = SDPGAgent(device=config.device,env=env, replay_buffer_class=replay.PriorityReplay)
     if config.load is not None:
         model.load_model(load_model = config.load)
     if config.play is not None:
@@ -47,5 +46,4 @@ def main(argv):
     env.close()
 
 if __name__ == '__main__':
-    mp.set_start_method('spawn')
     app.run(main)

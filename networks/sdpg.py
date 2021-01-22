@@ -58,7 +58,7 @@ class SDPGCritic(Critic):
         a = actions.view(-1,self.da)                # [B,da]
         xa = self.action_fc(a).unsqueeze_(1)        # [B,1,dnn_2_dim]
         # process samples
-        atoms = noise_samples.shape[-2]
+        #atoms = noise_samples.shape[-2]
         x_s = noise_samples.view(-1,1)              # [B*train_samples, 1]
         x_s = (self.sample_fc(x_s)                  # [B*train_samples,dnn_2_dim]
              .view(B,-1,self.dim_dense_2))          # [B,train_samples,dnn_2_dim]
@@ -67,5 +67,5 @@ class SDPGCritic(Critic):
             .view(-1,self.dim_dense_3))              # [B*train_samples,dnn_2_dim]
         x = self.output_fc(x)                       # [B*train_samples,1]
         output_samples = x.view(B,-1)               # [B, train_samples]
-        self.Q_val = output_samples.mean(1)         # [B]
+        #self.Q_val = output_samples.mean(1)         # [B]
         return output_samples

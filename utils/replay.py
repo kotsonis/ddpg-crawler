@@ -119,13 +119,8 @@ class NStepReplay(Buffer):
     def gammas(self):
         return self._sampling_results['next_gamma']
 
-    def add(self, **kwargs):
+    def add(self, state, action, reward, next_state, done, **kwargs):
         """Adds experience into temporary n_step buffer, and populates priority buffer as necessary."""
-        state = kwargs.pop('state')
-        action = kwargs.pop('action')
-        reward = kwargs.pop('reward')
-        next_state = kwargs.pop('next_state')
-        done = kwargs.pop('done')
 
         # get batch size (in case we are stacking multiple agent interactions)
         if isinstance(done, (list, tuple, np.ndarray)):
@@ -221,6 +216,7 @@ class PriorityReplay(Buffer):
         self._beta = self.beta_min
         self._max_priority = 1.0
         self.vf = np.vectorize(self._st_sum.find_prefixsum_idx)
+    
     def compute_beta_decay(self,training_iterations=1):
         """calculates the beta decay factor according to total training iterations.
 
