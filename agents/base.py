@@ -160,7 +160,8 @@ class Agent():
             load_path = kwargs.setdefault(
                                         'load_model',
                                         config.load_model)
-            checkpoint = torch.load(load_path,map_location=torch.device('cpu'))
+            checkpoint = torch.load(load_path,map_location=torch.device(self.device))
+            
             self.saved_iteration = checkpoint['iteration']
             self.iteration += self.saved_iteration
             self.critic.load_state_dict(checkpoint['critic_state_dict'])

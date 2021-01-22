@@ -336,7 +336,7 @@ class SDPG_n_per(nstepDDPG):
         q_target_tile = tile(q_target_sorted.unsqueeze(-2),-2,num_atoms, self.device)
         q_online_tile = tile(q_online_sorted.unsqueeze(-1),-1,num_atoms, self.device)
 
-        error_loss = q_target_tile - q_online_tile
+        error_loss = q_online - q_target_tile
         huber_loss = F.smooth_l1_loss(q_target_tile, q_online_tile,reduction='none')
         
         min_tau = 1/(2*num_atoms)
@@ -372,7 +372,7 @@ class SDPG_n_per(nstepDDPG):
         actor_loss = - (self.critic(states, self.actor(states), noise) # [M*Agents,num_samples]
                                   .mean(dim=1) # [M*Agents]
                                   .mean()) # scalar
-                                   
+        
         # store loss for tensorboard
         with torch.no_grad():
             self.mean_loss_p = actor_loss                          

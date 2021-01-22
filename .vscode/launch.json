@@ -40,13 +40,18 @@
             "request":"launch",
             "program":"crawler.py",
             "console":"integratedTerminal",
-            "args": ["--train", 
-                     "--log_dir", "log_spdg_50_nstep",
-                     "--training_iterations", "50000", 
-                     "--env", "./Crawler_Windows_x86_64/Crawler.exe",
-                     "--device", "cuda",
-                     "--memory_size", "20000",
-                     "--n_step", "50"
+            "args": [
+                "--train", 
+                "--log_dir", "log_spdg_no_accumulator",
+                "--training_iterations", "50000",
+                "--n_step", "20",
+                "--eps_start", "0.99",                                  
+                "--eps_minimum", "0.3",
+                "--memory_batch_size", "512",
+                "--env", "./Crawler_Windows_x86_64/Crawler.exe",
+                "--device", "cuda",
+                "--memory_size", "100000",
+                
                     ]
         },
         {
@@ -55,15 +60,18 @@
             "request":"launch",
             "program":"crawler.py",
             "console":"integratedTerminal",
-            "args": ["--train", 
-                     "--log_dir", "log_spdg/",
-                     "--eps_start", "0.3",
-                     "--eps_minimum", "0.001",
-                     "--training_iterations", "10000", 
-                     "--memory_batch_size", "512",
-                     "--load", "./working_models_bckup/model_latest.pt",
-                     "--env", "./Crawler_Windows_x86_64/Crawler.exe",
-                     "--device", "cuda"
+            "args": [
+                "--train", 
+                "--log_dir", "log_spdg_no_accumulator",
+                "--training_iterations", "50000",
+                "--n_step", "20",
+                "--eps_start", "0.99",                                  
+                "--eps_minimum", "0.3",
+                "--memory_batch_size", "512",
+                     
+                "--load", "./log_spdg_no_accumulator/model/model_latest.pt",
+                "--env", "./Crawler_Windows_x86_64/Crawler.exe",
+                "--device", "cuda"
                     ]
         },{
             "name": "Crawler Play",

@@ -2,7 +2,6 @@
 choleski.py
 tqdm_test.py
 models/
-model/
 log/
 log_spdg/
 *.pyperf
@@ -146,3 +145,76 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+log_spdg_no_accumulator/tb/20210122_090508/events.out.tfevents.1611302708.Theo-Desktop
+log_spdg_no_accumulator/tb/20210122_093038/events.out.tfevents.1611304238.Theo-Desktop
+.gitignore
+log_spdg_no_accumulator/tb/20210122_094353/events.out.tfevents.1611305033.Theo-Desktop
+
+
+log_spdg_50_nstep/model/model_   0.pt
+log_spdg_50_nstep/model/model_   1.pt
+log_spdg_50_nstep/model/model_   2.pt
+log_spdg_50_nstep/model/model_   3.pt
+log_spdg_50_nstep/model/model_   4.pt
+log_spdg_50_nstep/model/model_   5.pt
+log_spdg_50_nstep/model/model_   6.pt
+log_spdg_50_nstep/model/model_   7.pt
+log_spdg_50_nstep/model/model_   8.pt
+log_spdg_50_nstep/model/model_   9.pt
+log_spdg_50_nstep/model/model_  10.pt
+log_spdg_50_nstep/model/model_  11.pt
+log_spdg_50_nstep/model/model_  12.pt
+log_spdg_50_nstep/model/model_  13.pt
+log_spdg_50_nstep/model/model_  14.pt
+log_spdg_50_nstep/model/model_  15.pt
+log_spdg_50_nstep/model/model_latest.pt
+log_spdg_no_accumulator/model/model_   0.pt
+log_spdg_no_accumulator/model/model_   1.pt
+log_spdg_no_accumulator/model/model_   2.pt
+log_spdg_no_accumulator/model/model_   3.pt
+log_spdg_no_accumulator/model/model_   4.pt
+log_spdg_no_accumulator/model/model_   5.pt
+log_spdg_no_accumulator/model/model_   6.pt
+log_spdg_no_accumulator/model/model_   7.pt
+log_spdg_no_accumulator/model/model_   8.pt
+log_spdg_no_accumulator/model/model_   9.pt
+log_spdg_no_accumulator/model/model_  10.pt
+log_spdg_no_accumulator/model/model_  11.pt
+log_spdg_no_accumulator/model/model_  12.pt
+log_spdg_no_accumulator/model/model_  13.pt
+log_spdg_no_accumulator/model/model_  14.pt
+log_spdg_no_accumulator/model/model_  15.pt
+log_spdg_no_accumulator/model/model_  16.pt
+log_spdg_no_accumulator/model/model_  17.pt
+log_spdg_no_accumulator/model/model_  18.pt
+log_spdg_no_accumulator/model/model_  19.pt
+log_spdg_no_accumulator/model/model_  20.pt
+log_spdg_no_accumulator/model/model_  21.pt
+log_spdg_no_accumulator/model/model_  22.pt
+log_spdg_no_accumulator/model/model_  23.pt
+log_spdg_no_accumulator/model/model_  24.pt
+log_spdg_no_accumulator/model/model_  25.pt
+log_spdg_no_accumulator/model/model_  26.pt
+log_spdg_no_accumulator/model/model_  27.pt
+log_spdg_no_accumulator/model/model_  28.pt
+log_spdg_no_accumulator/model/model_  29.pt
+log_spdg_no_accumulator/model/model_  30.pt
+log_spdg_no_accumulator/model/model_  31.pt
+log_spdg_no_accumulator/model/model_  32.pt
+log_spdg_no_accumulator/model/model_  33.pt
+log_spdg_no_accumulator/model/model_  34.pt
+log_spdg_no_accumulator/model/model_  35.pt
+log_spdg_no_accumulator/model/model_  36.pt
+log_spdg_no_accumulator/model/model_  37.pt
+log_spdg_no_accumulator/model/model_  38.pt
+log_spdg_no_accumulator/model/model_  39.pt
+log_spdg_no_accumulator/model/model_  40.pt
+log_spdg_no_accumulator/model/model_  41.pt
+log_spdg_no_accumulator/model/model_  42.pt
+log_spdg_no_accumulator/model/model_  43.pt
+log_spdg_no_accumulator/model/model_  44.pt
+log_spdg_no_accumulator/model/model_  45.pt
+log_spdg_no_accumulator/model/model_  46.pt
+log_spdg_no_accumulator/model/model_  47.pt
+log_spdg_no_accumulator/model/model_  48.pt
+log_spdg_no_accumulator/model/model_  49.pt
