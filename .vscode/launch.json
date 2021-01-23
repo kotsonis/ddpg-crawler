@@ -1,0 +1,109 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name":"Crawler Train",
+            "type":"python",
+            "request":"launch",
+            "program":"crawler.py",
+            "console":"integratedTerminal",
+            "args": ["--train", 
+                     "--log_dir", "log_spdg_removed_tile_ops",
+                     "--training_iterations", "50000",
+                     "--n_step", "10",
+                     "--eps_start", "0.99",                                  
+                     "--eps_minimum", "0.2",
+                     "--memory_batch_size", "128",
+                     "--memory_size", "1000000",
+                     ]
+        },
+        {
+            "name":"Crawler Continue",
+            "type":"python",
+            "request":"launch",
+            "program":"crawler.py",
+            "console":"integratedTerminal",
+            "args": ["--train", 
+                     "--log_dir", "log_spdg_removed_tile_ops",
+                     "--training_iterations", "20000",
+                     "--n_step", "10",
+                     "--eps_start", "0.99",
+                     "--eps_minimum", "0.02",
+                     "--memory_batch_size", "128",
+                     "--load", "./log_spdg_removed_tile_ops/model/model_latest.pt",
+                     "--memory_size", "1000000",
+                     ]
+        },
+        {
+            "name":"Crawler training - Theo",
+            "type":"python",
+            "request":"launch",
+            "program":"crawler.py",
+            "console":"integratedTerminal",
+            "args": [
+                "--train", 
+                "--log_dir", "log_spdg_no_accumulator",
+                "--training_iterations", "50000",
+                "--n_step", "20",
+                "--eps_start", "0.99",                                  
+                "--eps_minimum", "0.3",
+                "--memory_batch_size", "512",
+                "--env", "./Crawler_Windows_x86_64/Crawler.exe",
+                "--device", "cuda",
+                "--memory_size", "1000000",
+                
+                    ]
+        },
+        {
+            "name":"Crawler continue training - Theo",
+            "type":"python",
+            "request":"launch",
+            "program":"crawler.py",
+            "console":"integratedTerminal",
+            "args": [
+                "--train", 
+                "--log_dir", "log_spdg_no_accumulator",
+                "--training_iterations", "50000",
+                "--n_step", "20",
+                "--eps_start", "0.99",                                  
+                "--eps_minimum", "0.3",
+                "--memory_batch_size", "512",
+                     
+                "--load", "./log_spdg_no_accumulator/model/model_latest.pt",
+                "--env", "./Crawler_Windows_x86_64/Crawler.exe",
+                "--device", "cuda"
+                    ]
+        },{
+            "name": "Crawler Play",
+            "type": "python",
+            "request": "launch",
+            "program": "crawler.py",
+            "console": "integratedTerminal",
+            "args":["--play", 
+                "--log_dir", "log_spdg",
+                "--episodes", "100", 
+                "--load", "./working_models_bckup/model_latest.pt"],
+        },{
+            "name": "Crawler Play - Theo",
+            "type": "python",
+            "request": "launch",
+            "program": "crawler.py",
+            "console": "integratedTerminal",
+            "args":["--play", 
+                    "--log_dir", "log_spdg",
+                    "--episodes", "100", 
+                    "--env", "./Crawler_Windows_x86_64/Crawler.exe",
+                    "--device", "cuda",
+                    "--load", "./working_models_bckup/model_latest.pt"]
+        },{
+            "name": "Run current file",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        }
+    ]
+}
