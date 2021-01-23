@@ -71,7 +71,7 @@ class Buffer():
         ret_val = zip(*res)
         ret_list = deque()
         for vals in ret_val:
-            d = torch.tensor(vals).float().to(self.device)
+            d = torch.tensor(vals, requires_grad=False,device=self.device).float()
             if (d.dim() < 2):
                 d = d.unsqueeze(-1)
             ret_list.append(d)
@@ -271,7 +271,7 @@ class PriorityReplay(Buffer):
             weight_sample = (p_sample * len(self._buffer)) ** (-self._beta) 
             weights.append(weight_sample / max_weight)
         #expand weights dimension from (batch_size,) to (batch_size,1)
-        weights_t = torch.tensor(weights).unsqueeze(1).to(self.device)
+        weights_t = torch.tensor(weights, requires_grad=False,device=self.device).unsqueeze(1)
         
         self._encode_sample(idxes)
         self._sampling_results['weights'] = weights_t

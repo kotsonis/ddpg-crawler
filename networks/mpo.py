@@ -1,21 +1,29 @@
 #ref: daisatojp github
 
-import torch.nn.functional as F
-import torch.nn as nn
+import numpy as np
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from absl import logging
+from absl import flags
+from networks import Actor, Critic
+from networks import hidden_init
 from torch.distributions import MultivariateNormal
 from torch.distributions import Categorical
 
+config = flags.FLAGS
 
-class ActorContinuous(nn.Module):
+class DistribActor(Actor):
     """
-    Policy network
-    :param env: OpenAI gym environment
+    Distributional Actor.
+
+    The forward pass outputs a vector of means and covariance matrix (optionally)
+    which means that we can sample an action (based on the distribution), instead
+    of being deterministic and greedy.
+
     """
-    def __init__(self, state_size, action_size):
-        super(ActorContinuous, self).__init__()
-        self.ds = state_size
-        self.da = action_size
+    def __init__(self, **kwargs):
+        super(DistribActor, self).__init__(**kwargs)
         self.lin1 = nn.Linear(self.ds, 256)
         self.lin2 = nn.Linear(256, 256)
         self.mean_layer = nn.Linear(256, self.da)
@@ -55,3 +63,26 @@ class ActorContinuous(nn.Module):
             actions = action_distribution.sample()
         return actions
 
+class CriticContinuous(Critic):
+    """
+    :param env: OpenAI gym environment
+    """
+    def __init__(self, state_size, action_size):
+        super(CriticContinuous, self).__init__()
+        self.ds = state_size
+        self.da = action_size
+        self.lin1 = nn.Linear(self.ds + self.da, 256)
+        self.lin2 = nn.Linear(256, 256)
+        self.lin3 = nn.Linear(256, 1)
+
+    def forward(self, state, action):
+        """
+        :param state: (B, ds)
+        :param action: (B, da)
+        :return: Q-value
+        """
+        h = torch.cat([state, action], dim=1)  # (B, ds+da)
+        h = F.relu(self.lin1(h))  # (B, 128)
+        h = F.relu(self.lin2(h))  # (B, 128)
+        v = self.lin3(h)  # (B, 1)
+        return v

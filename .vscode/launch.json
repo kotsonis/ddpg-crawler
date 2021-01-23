@@ -11,12 +11,13 @@
             "program":"crawler.py",
             "console":"integratedTerminal",
             "args": ["--train", 
-                     "--log_dir", "log_spdg_no_accumulator",
+                     "--log_dir", "log_spdg_removed_tile_ops",
                      "--training_iterations", "50000",
-                     "--n_step", "20",
+                     "--n_step", "10",
                      "--eps_start", "0.99",                                  
-                     "--eps_minimum", "0.3",
-                     "--memory_batch_size", "512",
+                     "--eps_minimum", "0.2",
+                     "--memory_batch_size", "128",
+                     "--memory_size", "1000000",
                      ]
         },
         {
@@ -26,12 +27,14 @@
             "program":"crawler.py",
             "console":"integratedTerminal",
             "args": ["--train", 
-                     "--log_dir", "log_spdg/",
-                     "--training_iterations", "50000",
-                     "--eps_start", "0.3",
-                     "--eps_minimum", "0.001",
-                     "--memory_batch_size", "512",
-                     "--load", "./working_models_bckup/model_latest.pt"
+                     "--log_dir", "log_spdg_removed_tile_ops",
+                     "--training_iterations", "20000",
+                     "--n_step", "10",
+                     "--eps_start", "0.99",
+                     "--eps_minimum", "0.02",
+                     "--memory_batch_size", "128",
+                     "--load", "./log_spdg_removed_tile_ops/model/model_latest.pt",
+                     "--memory_size", "1000000",
                      ]
         },
         {
@@ -50,7 +53,7 @@
                 "--memory_batch_size", "512",
                 "--env", "./Crawler_Windows_x86_64/Crawler.exe",
                 "--device", "cuda",
-                "--memory_size", "100000",
+                "--memory_size", "1000000",
                 
                     ]
         },

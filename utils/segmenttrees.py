@@ -19,7 +19,8 @@ class SegmentTree():
         """
         assert capacity > 0 and capacity & (capacity - 1) == 0, "capacity must be positive and a power of 2."
         self._capacity = capacity
-        self._value = [neutral_element for _ in range(2 * capacity)] # create array to represent binary tree structure
+        self._value = np.full(2*capacity,neutral_element, dtype=float)
+        #self._value = [neutral_element for _ in range(2 * capacity)] # create array to represent binary tree structure
         self._operation = operation
 
     def _reduce_helper(self, start: int, end:int, node:int, node_start:int, node_end:int):

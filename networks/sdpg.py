@@ -47,7 +47,7 @@ class SDPGCritic(Critic):
         # bit complex, so I have put the resulting tensor dimensions in comments
         # states=[M,agents,ds]
         # actions=[M,agents,da]
-        # noise_samples = [M*agents,train_samples,1]
+        # noise_samples = [M*agents,num_atoms,1]
         s = states.view(-1,self.ds)                 # [M*agents, ds]
         B = s.shape[0] # B=M*agents
         # process states
@@ -59,13 +59,14 @@ class SDPGCritic(Critic):
         xa = self.action_fc(a).unsqueeze_(1)        # [B,1,dnn_2_dim]
         # process samples
         #atoms = noise_samples.shape[-2]
-        x_s = noise_samples.view(-1,1)              # [B*train_samples, 1]
-        x_s = (self.sample_fc(x_s)                  # [B*train_samples,dnn_2_dim]
-             .view(B,-1,self.dim_dense_2))          # [B,train_samples,dnn_2_dim]
+        x_s = noise_samples.view(-1,1)              # [B*num_atoms, 1]
+        x_s = (self.sample_fc(x_s)                  # [B*num_atoms,dnn_2_dim]
+             .view(B,-1,self.dim_dense_2))          # [B,num_atoms,dnn_2_dim]
         #x_s now (B*num_samples,num_atoms,dim_dense_2)
-        x = (F.leaky_relu(self.dense3(xs+xa+x_s))    # [B,train_samples,dnn_2_dim]
-            .view(-1,self.dim_dense_3))              # [B*train_samples,dnn_2_dim]
-        x = self.output_fc(x)                       # [B*train_samples,1]
-        output_samples = x.view(B,-1)               # [B, train_samples]
-        #self.Q_val = output_samples.mean(1)         # [B]
+        x = (F.leaky_relu(self.dense3(xs+xa+x_s))    # [B,num_atoms,dnn_2_dim]
+            .view(-1,self.dim_dense_3))              # [B*num_atoms,dnn_2_dim]
+        x = self.output_fc(x)                       # [B*num_atoms,1]
+        output_samples = x.view(B,-1)               # [B, num_atoms]
+
+        # Q value is just the average over num_atoms] ie output_samples.mean(1) [B]
         return output_samples

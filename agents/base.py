@@ -15,7 +15,7 @@ from absl import flags
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 from collections import deque
 from utils.OUNoise import OUNoise
 import copy
@@ -52,15 +52,6 @@ flags.DEFINE_float(name='soft_update_tau',default = 0.001,
 flags.DEFINE_bool(name='episodic',default = True,
     help='train on episodes or max_frames_per_episode(True)')
 
-def tile(a, dim, n_tile, device):
-    """creates torch.tensor by repeating a dimension n_tile times."""
-    init_dim = a.size(dim)
-    repeat_idx = [1] * a.dim()
-    repeat_idx[dim] = n_tile
-    a = a.repeat(*(repeat_idx))
-    order_index = torch.LongTensor(np.concatenate(
-        [init_dim * np.arange(n_tile) + i for i in range(init_dim)])).to(device)
-    return torch.index_select(a, dim, order_index)
 class Agent():
     """Base Agent for RL."""
     def __init__(
@@ -259,6 +250,7 @@ class Agent():
         solution = 2000
         prev_iteration = self.iteration
         env_info = self.env.reset(train_mode=True)[self.brain_name]
+        explore = True
         while self.iteration < self.training_iterations:
             #for it in trange(15, leave=False, desc='Episodes {:3d}-{:3d}'.format(i_episode, i_episode+15)):
             i_episode += 1
@@ -266,9 +258,11 @@ class Agent():
             states = env_info.vector_observations             # get the current state of each agent
             agent_scores = np.zeros(num_agents)
             frames = 0
-            self.noise.reset()
+            if i_episode % 3 == 0:
+                # explore = not explore
+                self.noise.reset()
             while frames < self.max_frames_per_episode: # each frame
-                actions = self.act(states, add_noise=True)
+                actions = self.act(states, add_noise=explore)
                 step += 1
                 frames += 1
                 env_info = env.step(actions)[self.brain_name]          # send all actions to tne environment
@@ -309,16 +303,16 @@ class Agent():
     def act(self,states, add_noise=True):
         """ act according to target policy based on state """
         # move states into torch tensor on device
-        state = torch.FloatTensor(states).to(self.device)
+        state = torch.FloatTensor(states, device=self.device)
         # turn off training mode
-        self.target_actor.eval()
+        #self.target_actor.eval()
         with torch.no_grad():
-            action = self.target_actor(state).cpu().data.numpy()
+            action = self.target_actor(state)
             # if we are being stochastic, add noise weighted by exploration
             if add_noise:
-                action += self.eps*self.noise.sample().data.numpy()
-        self.target_actor.train()
-        return np.clip(action, -1, 1)  # TODO: clip according to Unity environment feedback
+                action += self.eps*self.noise.sample()
+        #self.target_actor.train()
+        return np.clip(action.data.numpy(), -1, 1)  # TODO: clip according to Unity environment feedback
 
     def step(self, state, action, reward, next_state, done):
         """Processes one step of Agent/environment interaction and invokes a learning step accordingly."""
@@ -350,7 +344,7 @@ class Agent():
         try:
             gammas = self.memory.gammas
         except AttributeError:
-            gammas = torch.ones_like(dones)*self.gamma
+            gammas = torch.ones_like(dones, requires_grad=False)*self.gamma
         # get weights and indexes from possibly a prioritized buffer
         try:
             weights = self.memory.weights
@@ -358,7 +352,7 @@ class Agent():
             self.memory.decay_beta() # decay the beta factor in the PER since we just sampled
             self.hasPER = True
         except AttributeError:
-            weights = torch.ones_like(dones)
+            weights = torch.ones_like(dones, requires_grad=False)
             idxs = []
         return states, actions, rewards, next_states, dones, gammas, weights, idxs
 
@@ -453,12 +447,14 @@ class Agent():
     def _next_iter(self):
         """increases training iterator and performs logging/model saving"""
         self.iteration += 1
-        # save latest model
-        self.save_model(os.path.join(self.model_save_dir, 'model_latest.pt'))
+        
         if (self.iteration+1) % self.model_save_period ==0:
             self.save_model(os.path.join(self.model_save_dir, 'model_{:4d}.pt'.format(self.save_counter)))
             self.save_counter += 1
         if (self.iteration+1) % self.tensorboard_update_period ==0:
+            # save latest model
+            self.save_model(os.path.join(self.model_save_dir, 'model_latest.pt'))
+            # write to tb log
             self._tb_write()
         return self.iteration
     def _tb_write(self):

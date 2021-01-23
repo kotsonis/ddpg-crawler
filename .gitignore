@@ -4,6 +4,7 @@ tqdm_test.py
 models/
 log/
 log_spdg/
+model/
 *.pyperf
 *.log*
 # Unity environments
@@ -218,3 +219,6 @@ log_spdg_no_accumulator/model/model_  46.pt
 log_spdg_no_accumulator/model/model_  47.pt
 log_spdg_no_accumulator/model/model_  48.pt
 log_spdg_no_accumulator/model/model_  49.pt
+.vscode/launch.json
+.vscode/launch.json
+.vscode/settings.json

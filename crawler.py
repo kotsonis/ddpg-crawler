@@ -31,7 +31,7 @@ def main(argv):
     logging.get_absl_handler().use_absl_log_file()
     logging.set_verbosity('debug')
     # modify some parameters of training
-    env = UnityEnvironment(file_name=config.env, worker_id = 2)
+    env = UnityEnvironment(file_name=config.env, worker_id = 1)
     model = SDPGAgent(device=config.device,env=env, replay_buffer_class=replay.PriorityReplay)
     if config.load is not None:
         model.load_model(load_model = config.load)
