@@ -27,7 +27,7 @@ from utils import accumulator
 flags.DEFINE_string(name='device', default='cpu',                    help="Device to use for torch")
 flags.DEFINE_string(name='env', default='../../deep-reinforcement-learning/p2_continuous-control/Crawler_Windows_x86_64/Crawler.exe',
                     help='Unity Environment to load')
-flags.DEFINE_boolean(name='render', default=False, 
+flags.DEFINE_boolean(name='nographics', default=True, 
                      help="execute Unity Enviroment with display")
 flags.DEFINE_boolean(name='debug', default=None, 
                      help="run in debug mode")
@@ -102,7 +102,7 @@ class Agent():
         replay_buffer_class = kwargs.pop('replay_buffer_class',replay.Buffer)
         self.memory = replay_buffer_class(**kwargs)
         
-        self.noise = OUNoise(self.da)
+        self.noise = OUNoise(self.da, device=self.device)
         #create actor & critic networks
         actor_dnn_class = kwargs.pop('actor_dnn_class',networks.base.Actor)
         self.actor = actor_dnn_class(**kwargs).to(self.device)
@@ -319,7 +319,7 @@ class Agent():
     def act(self,states, add_noise=True):
         """ act according to target policy based on state """
         # move states into torch tensor on device
-        state = torch.FloatTensor(states, device=self.device)
+        state = torch.tensor(states, dtype=torch.float,device=self.device)
         # turn off training mode
         #self.target_actor.eval()
         with torch.no_grad():
@@ -328,7 +328,7 @@ class Agent():
             if add_noise:
                 action += self.eps*self.noise.sample()
         #self.target_actor.train()
-        return np.clip(action.data.numpy(), -1, 1)  # TODO: clip according to Unity environment feedback
+        return np.clip(action.cpu().data.numpy(), -1, 1)  # TODO: clip according to Unity environment feedback
 
     def step(self, state, action, reward, next_state, done):
         """Processes one step of Agent/environment interaction and invokes a learning step accordingly."""
