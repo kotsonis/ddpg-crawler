@@ -23,17 +23,16 @@ from agents.nstep import nstepDDPG
 from agents.base import Agent
 from absl import logging
 from absl import flags
-config = flags.FLAGS
-flags.DEFINE_integer(name='SPDG_num_atoms',default=52,
-                  help='number of atoms to sample for the critic Q_value distribution')
+
 
 class SDPGAgent(Agent):
     def __init__(self,**kwargs):
-        # ----------------- create online & target actors -------------------- #
-        actor_dnn_class = kwargs.setdefault('actor_dnn_class',networks.SDPGActor)
-        critic_dnn_class = kwargs.setdefault('critic_dnn_class',networks.SDPGCritic)
-        self.num_atoms = kwargs.setdefault('SPDG_num_atoms',config.SPDG_num_atoms)
-        super(SDPGAgent,self).__init__(**kwargs)
+      config = flags.FLAGS
+      # ----------------- create online & target actors -------------------- #
+      actor_dnn_class = kwargs.setdefault('actor_dnn_class',networks.SDPGActor)
+      critic_dnn_class = kwargs.setdefault('critic_dnn_class',networks.SDPGCritic)
+      self.num_atoms = kwargs.setdefault('num_atoms',config.num_atoms)
+      super(SDPGAgent,self).__init__(**kwargs)
 
 
     

@@ -24,33 +24,8 @@ import networks
 from utils import replay
 from utils import accumulator
 
-
-# global config class to share command line/default parameters across modules
 config = flags.FLAGS
-flags.DEFINE_float(name='eps_start',default=1.0,
-    help='starting exploration rate (0,1]')
-flags.DEFINE_float(name='eps_minimum',default=0.001,
-    help='minimum exploration rate')
-flags.DEFINE_float(name='eps_decay',default=0.99995,
-    help='eps decay rate. eps=eps*eps_decay')
-flags.DEFINE_float(name='actor_lr',default=3e-4,
-    help='lr for actor optimizer')
-flags.DEFINE_float(name='critic_lr',default=3e-4,
-    help='lr for critic optimizer')
-flags.DEFINE_float(name='max_frames_per_episode',default=1000,
-    help='maximum number of frames to process per episode')
-flags.DEFINE_string(name='load_model',default='./model/model_saved.pt',
-    help='saved agent model to load')
-flags.DEFINE_integer(name='training_iterations',default=100000,
-    help='number of agent/env interactions to perform')
-flags.DEFINE_integer(name='learn_every',default=4,
-    help='number of environment interactions for every training step')
-flags.DEFINE_float(name='gamma',default=0.99,
-    help='discount factor for future rewards (0,1]')
-flags.DEFINE_float(name='soft_update_tau',default = 0.001,
-    help='soft update factor for copying online actor/critic into target')
-flags.DEFINE_bool(name='episodic',default = True,
-    help='train on episodes or max_frames_per_episode(True)')
+# global config class to share command line/default parameters across modules
 
 class Agent():
     """Base Agent for RL."""
@@ -59,6 +34,7 @@ class Agent():
                 env,
                 *pargs,
                 **kwargs):
+        config = kwargs['config']
         self.device = kwargs.setdefault('device','cpu')
         self.name = kwargs.setdefault('name','BaseRLAgent')
         self.eps_start = kwargs.get('eps_start', config.eps_start)

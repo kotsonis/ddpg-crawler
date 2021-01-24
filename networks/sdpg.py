@@ -7,7 +7,6 @@ from absl import flags
 from networks import Actor, Critic
 from networks import hidden_init
 
-config = flags.FLAGS
 class SDPGActor(Actor):
     def __init__(self, **kwargs):
         """initialize a DDPG actor (no changes for SPDG on actor)"""
