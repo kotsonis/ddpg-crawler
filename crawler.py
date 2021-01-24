@@ -3,12 +3,13 @@ from absl import app
 from absl import logging
 from absl import flags
 
-from unityagents import UnityEnvironment
+#from unityagents import UnityEnvironment
 from agents.spdg import SDPGAgent
 from utils import replay
 
 config = flags.FLAGS
 
+from unityagents import UnityEnvironment
 
 
 def main(argv):
@@ -18,7 +19,7 @@ def main(argv):
     logging.get_absl_handler().use_absl_log_file()
     logging.set_verbosity('debug')
     # modify some parameters of training
-    env = UnityEnvironment(file_name=config.env, worker_id = 1)
+    env = UnityEnvironment(file_name=config.env, worker_id = 1, no_graphics=config.nographics)
     model = SDPGAgent(device=config.device,env=env, replay_buffer_class=replay.PriorityReplay)
     if config.load is not None:
         model.load_model(load_model = config.load)
@@ -28,7 +29,7 @@ def main(argv):
         model.train(
             training_iterations=config.training_iterations,
             log_dir=config.log_dir,
-            render=config.render,
+            render=config.nographics,
             debug=config.debug)
     env.close()
 

@@ -15,7 +15,7 @@ from absl import flags
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.tensorboard import SummaryWriter
+from tensorboardX import SummaryWriter
 from collections import deque
 from utils.OUNoise import OUNoise
 import copy
