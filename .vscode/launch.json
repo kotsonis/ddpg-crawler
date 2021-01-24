@@ -12,12 +12,13 @@
             "console":"integratedTerminal",
             "args": ["--train", 
                      "--log_dir", "log_spdg_removed_tile_ops",
-                     "--training_iterations", "50000",
+                     "--training_iterations", "20",
                      "--n_step", "10",
                      "--eps_start", "0.99",                                  
                      "--eps_minimum", "0.2",
                      "--memory_batch_size", "128",
                      "--memory_size", "1000000",
+                     "--norender"
                      ]
         },
         {

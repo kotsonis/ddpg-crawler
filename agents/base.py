@@ -24,6 +24,46 @@ import networks
 from utils import replay
 from utils import accumulator
 
+flags.DEFINE_string(name='device', default='cpu',                    help="Device to use for torch")
+flags.DEFINE_string(name='env', default='../../deep-reinforcement-learning/p2_continuous-control/Crawler_Windows_x86_64/Crawler.exe',
+                    help='Unity Environment to load')
+flags.DEFINE_boolean(name='render', default=False, 
+                     help="execute Unity Enviroment with display")
+flags.DEFINE_boolean(name='debug', default=None, 
+                     help="run in debug mode")
+flags.DEFINE_string(name='load',default=None,
+                    help='model file to load with path')
+flags.DEFINE_bool(name='play', default=None,
+                  help='play environment with model')
+flags.DEFINE_bool(name='train', default=None,
+                  help='train the agent')
+flags.DEFINE_integer(name='episodes', default=20,
+                     help='number of episodes to run')
+flags.DEFINE_float(name='eps_start',default=1.0,
+                   help='starting exploration rate (0,1]')
+flags.DEFINE_float(name='eps_minimum',default=0.001,
+                   help='minimum exploration rate')
+flags.DEFINE_float(name='eps_decay',default=0.99995,
+                   help='eps decay rate. eps=eps*eps_decay')
+flags.DEFINE_float(name='actor_lr',default=3e-4,
+                   help='lr for actor optimizer')
+flags.DEFINE_float(name='critic_lr',default=3e-4,
+                   help='lr for critic optimizer')
+flags.DEFINE_float(name='max_frames_per_episode',default=1000,
+                   help='maximum number of frames to process per episode')
+flags.DEFINE_string(name='load_model',default='./model/model_saved.pt',
+                    help='saved agent model to load')
+flags.DEFINE_integer(name='training_iterations',default=100000,
+                     help='number of agent/env interactions to perform')
+flags.DEFINE_integer(name='learn_every',default=4,
+                     help='number of environment interactions for every training step')
+flags.DEFINE_float(name='gamma',default=0.99,
+                   help='discount factor for future rewards (0,1]')
+flags.DEFINE_float(name='soft_update_tau',default = 0.001,
+                   help='soft update factor for copying online actor/critic into target')
+flags.DEFINE_bool(name='episodic',default = True,
+                  help='train on episodes or max_frames_per_episode(True)')
+
 config = flags.FLAGS
 # global config class to share command line/default parameters across modules
 
@@ -34,7 +74,6 @@ class Agent():
                 env,
                 *pargs,
                 **kwargs):
-        config = kwargs['config']
         self.device = kwargs.setdefault('device','cpu')
         self.name = kwargs.setdefault('name','BaseRLAgent')
         self.eps_start = kwargs.get('eps_start', config.eps_start)
@@ -227,17 +266,18 @@ class Agent():
         prev_iteration = self.iteration
         env_info = self.env.reset(train_mode=True)[self.brain_name]
         explore = True
+        print("preparing to train for {} iterations".format(self.training_iterations))
         while self.iteration < self.training_iterations:
+            if(self.iteration > self.training_iterations -10):
+                print("getting close")
             #for it in trange(15, leave=False, desc='Episodes {:3d}-{:3d}'.format(i_episode, i_episode+15)):
             i_episode += 1
             #env_info = env.reset(train_mode=True)[self.brain_name] # reset the environment
             states = env_info.vector_observations             # get the current state of each agent
             agent_scores = np.zeros(num_agents)
             frames = 0
-            if i_episode % 3 == 0:
-                # explore = not explore
-                self.noise.reset()
-            while frames < self.max_frames_per_episode: # each frame
+            self.noise.reset()
+            while frames < self.max_frames_per_episode and self.iteration < self.training_iterations: # each frame
                 actions = self.act(states, add_noise=explore)
                 step += 1
                 frames += 1

@@ -222,3 +222,7 @@ log_spdg_no_accumulator/model/model_  49.pt
 .vscode/launch.json
 .vscode/launch.json
 .vscode/settings.json
+Unity_env_trials.ipynb
+log_spdg_removed_tile_ops/tb/20210124_115102/events.out.tfevents.1611485466.DESKTOP-DAD.20356.0
+log_spdg_removed_tile_ops/tb/20210124_115446/events.out.tfevents.1611485690.DESKTOP-DAD.20240.0
+log_spdg_removed_tile_ops/tb/20210124_120226/events.out.tfevents.1611486150.DESKTOP-DAD.13504.0

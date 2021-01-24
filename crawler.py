@@ -8,20 +8,7 @@ from agents.spdg import SDPGAgent
 from utils import replay
 
 config = flags.FLAGS
-flags.DEFINE_string(name='device', default='cpu',
-                        help="Device to use for torch")
-flags.DEFINE_string(name='env', default='../../deep-reinforcement-learning/p2_continuous-control/Crawler_Windows_x86_64/Crawler.exe',
-                        help='Unity Environment to load')
-flags.DEFINE_boolean(name='render', default=True, help="execute Unity Enviroment with display")
-flags.DEFINE_boolean(name='debug', default=None, help="run in debug mode")
-flags.DEFINE_string(name='load',default=None,
-                        help='model file to load with path')
-flags.DEFINE_bool(name='play', default=None,
-                        help='play environment with model')
-flags.DEFINE_bool(name='train', default=None, 
-                        help='train the agent')
-flags.DEFINE_integer(name='episodes', default=20,
-                        help='number of episodes to run')
+
 
 
 def main(argv):

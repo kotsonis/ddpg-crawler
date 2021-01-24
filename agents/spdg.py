@@ -24,6 +24,9 @@ from agents.base import Agent
 from absl import logging
 from absl import flags
 
+flags.DEFINE_integer(name='num_atoms',default=52,
+                  help='number of atoms to sample for the critic Q_value distribution')
+config = flags.FLAGS
 
 class SDPGAgent(Agent):
     def __init__(self,**kwargs):

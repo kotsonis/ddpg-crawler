@@ -4,6 +4,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 from absl import logging
 from absl import flags
+flags.DEFINE_integer(name='actor_dim_dense_1',default=256,
+                     help='output dimension of actor 1st hidden layer')
+flags.DEFINE_integer(name='actor_dim_dense_2',default=256,
+                     help='output dimension of actor 2nd hidden layer')
+flags.DEFINE_integer(name='actor_dim_dense_3',default=256,
+                     help='output dimension of actor 3nd hidden layer')
+flags.DEFINE_integer(name='critic_dim_dense_1',default=256,
+                     help='output dimension of critic 1st hidden layer')
+flags.DEFINE_integer(name='critic_dim_dense_2',default=256,
+                     help='output dimension of critic 2nd hidden layer')
+flags.DEFINE_integer(name='critic_dim_dense_3',default=256,
+                     help='output dimension of critic 3nd hidden layer')
 
 config = flags.FLAGS
 def hidden_init(layer):
@@ -13,7 +25,6 @@ def hidden_init(layer):
 
 class Actor(nn.Module):
     def __init__(self, **kwargs):
-        config = kwargs['config']
         super(Actor, self).__init__()
         self.ds = kwargs['state_size']
         self.da = kwargs['action_size']
@@ -60,7 +71,6 @@ class Actor(nn.Module):
 
 class Critic(nn.Module):
     def __init__(self, **kwargs):
-      config = kwargs['config']
       super(Critic, self).__init__()
       self.ds = kwargs['state_size']
       self.da = kwargs['action_size']

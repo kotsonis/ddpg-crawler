@@ -9,12 +9,19 @@ from operator import itemgetter
 from collections import namedtuple, deque
 from absl import logging
 from absl import flags
+flags.DEFINE_integer(name='memory_size',default=1000000,
+                     help='size of replay memory')
+flags.DEFINE_integer(name='memory_batch_size',default=128,
+                     help='batch size for replay memory samples')
+flags.DEFINE_integer(name='n_step',default = 3,
+                     help='Number of steps to lookahead the returns in replay buffer')
+
+config = flags.FLAGS
 
 class Buffer():
     """ Experience Replay Buffer class """
     def __init__(self, **kwargs):
         """Create simple Replay circular buffer as a list"""
-        config = kwargs['config']
         self._buffer = []
         self._sampling_results = dict()
         self._maxsize = kwargs.pop('memory_size', config.memory_size)
@@ -102,7 +109,6 @@ class NStepReplay(Buffer):
         self.experience = namedtuple("Experience", self.experience._fields + tuple("next_gamma"))
         self.n_step = kwargs.pop('n_step', config.n_step)
         self.gamma = kwargs.pop('gamma', config.gamma)
-        self.unroll_agents = kwargs.pop('unroll_agents', config.unroll_agents)
         self.num_agents = kwargs.pop('num_agents')+1
         #initialize a deque for temporary storage
         self.returns = deque(maxlen=self.n_step)
@@ -190,7 +196,6 @@ class PriorityReplay(Buffer):
             minimum priority for updated indexes
                                         (CLI `--PER_minimum_priority x.xx) """
         # read configuration parameters from arguments or defaults
-        config = kwargs['config']
         self._alpha = kwargs.pop('PER_alpha', config.PER_alpha)
         assert self._alpha >= 0, "negative alpha not allowed"
         self.beta_min = kwargs.pop('PER_beta_min', config.PER_beta_min)
