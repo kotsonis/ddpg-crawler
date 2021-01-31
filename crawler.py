@@ -29,10 +29,10 @@ def main(argv):
     if not os.path.exists(config.log_dir):
             os.makedirs(config.log_dir)
     logging.get_absl_handler().use_absl_log_file()
-    logging.set_verbosity('debug')
+    logging.set_verbosity('info')
     # modify some parameters of training
     env = UnityEnvironment(file_name=config.env, worker_id = 1)
-    model = SDPGAgent(device=config.device,env=env, replay_buffer_class=replay.PriorityReplay)
+    model = SDPGAgent(device=config.device,env=env, replay_buffer_class=replay.MultiAgentPriorityReplay)
     if config.load is not None:
         model.load_model(load_model = config.load)
     if config.play is not None:

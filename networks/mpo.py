@@ -13,7 +13,7 @@ from torch.distributions import Categorical
 
 config = flags.FLAGS
 
-class DistribActor(Actor):
+class Actor(Actor):
     """
     Distributional Actor.
 
@@ -60,6 +60,7 @@ class DistribActor(Actor):
         with torch.no_grad():
             mean, cholesky = self.forward(state)
             action_distribution = MultivariateNormal(mean, scale_tril=cholesky)
+            action_distribution.rsample
             actions = action_distribution.sample()
         return actions
 

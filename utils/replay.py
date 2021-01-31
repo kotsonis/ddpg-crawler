@@ -51,6 +51,12 @@ class Buffer():
         """Returns true if buffer has more than batch_size samples"""
         return len(self._buffer) > self._batch_size
 
+    def clear(self):
+        """clears the buffer from any memories"""
+        self._buffer.clear()
+        self._sampling_results.clear()
+        self._next_idx = 0
+
     def add(self, **kwargs):
         # basic implementation. store in buffer and increment index
         """ Add a new experience to replay buffer """
@@ -88,6 +94,36 @@ class Buffer():
         return
 
 #
+# Buffer with log probabilities
+#
+
+class PPOBuffer(Buffer):
+    """Replay buffer class that stores also the log probabilities provided """
+
+    def __init__(self, **kwargs):
+        super(PPOBuffer, self).__init__(**kwargs)
+        ## add probs to data items
+        self.experience = namedtuple("Experience", self.experience._fields + tuple("probs"))
+    
+    @property
+    def probs(self):
+        return self._sampling_results['probs']
+
+    def add(self, **kwargs):
+        # basic implementation. store in buffer and increment index
+        """ Add a new experience to replay buffer """
+        data = self.experience(**kwargs)
+        self._buffer.append(data)
+
+    def _encode_sample(self, idxes):
+        "encodes batch of experiences indexed by idxes from buffer and makes them available in properties"
+        pass
+        #res = [self._buffer[idx] for idx in idxes]
+        
+        return
+
+
+#
 # nstep replay class
 #
 
@@ -107,7 +143,9 @@ class NStepReplay(Buffer):
         """
         # if not defined by child classes, define what an experience is
         super(NStepReplay, self).__init__(**kwargs)
-        self.experience = namedtuple("Experience", self.experience._fields + tuple("next_gamma"))
+        field = self.experience._fields
+        field = tuple((*field, "next_gamma"))
+        self.experience = namedtuple("Experience", field)
         self.n_step = kwargs.pop('n_step', config.n_step)
         self.gamma = kwargs.pop('gamma', config.gamma)
         self.unroll_agents = kwargs.pop('unroll_agents', config.unroll_agents)
@@ -119,36 +157,36 @@ class NStepReplay(Buffer):
     def gammas(self):
         return self._sampling_results['next_gamma']
 
-    def add(self, state, action, reward, next_state, done, **kwargs):
+    def add(self, states, actions, rewards, next_states, dones, **kwargs):
         """Adds experience into temporary n_step buffer, and populates priority buffer as necessary."""
 
         # get batch size (in case we are stacking multiple agent interactions)
-        if isinstance(done, (list, tuple, np.ndarray)):
-            B = len(done)
+        if isinstance(dones, (list, tuple, np.ndarray)):
+            B = len(dones)
         else:
             B = 0
         
-        self.returns.append((state,action,reward,next_state,done, *kwargs))
+        self.returns.append((states,actions,rewards,next_states,dones, *kwargs))
         if (len(self.returns) == self.n_step):
             state_t, action_t, reward_t, gammas = self._calc_back_rewards(batch_sz=B)
             super().add(
-                state=state_t, 
-                action=action_t, 
-                reward=reward_t,
-                next_state=next_state,
-                done=done,
+                states=state_t, 
+                actions=action_t, 
+                rewards=reward_t,
+                next_states=next_states,
+                dones=dones,
                 next_gamma=gammas,
                 **kwargs)
             
-        if np.any(done):
+        if np.any(dones):
             while (len(self.returns) > 0):
                 state_t, action_t, reward_t, gammas = self._calc_back_rewards(batch_sz=B)
                 super().add(
-                    state=state_t, 
-                    action=action_t, 
-                    reward=reward_t,
-                    next_state=next_state,
-                    done=done,
+                    states=state_t, 
+                    actions=action_t, 
+                    rewards=reward_t,
+                    next_states=next_states,
+                    dones=dones,
                     next_gamma=gammas,
                     **kwargs)
         return
@@ -156,13 +194,16 @@ class NStepReplay(Buffer):
     def _calc_back_rewards(self,batch_sz):
         """calculates discounted returns for n_step and gives back state,action,discounted_returns,next discount."""
         gamma = self.gamma
-        state_t, action_t, reward_t, _ = self.returns.popleft()
-        cum_reward = np.array(reward_t).reshape(-1,batch_sz)
+        state_t, action_t, reward_t,_,_ = self.returns.popleft()
+        try:
+            cum_reward = np.array(reward_t).reshape(-1,batch_sz)
+        except ValueError:
+            cum_reward = reward_t
         for data in self.returns:
-            next_rewards = np.array(data[2]).reshape(-1,batch_sz)
+            next_rewards = np.array(data[2])
             cum_reward = cum_reward+ gamma*next_rewards
             gamma = gamma*self.gamma
-        reward_t = cum_reward.reshape(batch_sz,-1)
+        reward_t = cum_reward
         gammas = np.ones(np.array(reward_t).shape)*gamma
 
         return state_t,action_t,reward_t, gammas
@@ -312,3 +353,142 @@ class PriorityReplay(Buffer):
 class NStepPriorityReplay(NStepReplay, PriorityReplay):
     def __init__(self, **kwargs):
         super(NStepPriorityReplay,self).__init__(**kwargs)
+
+class MultiAgentNstepReplay():
+    def __init__(self,**kwargs):
+        self._batch_size = kwargs.pop('memory_batch_size',config.memory_batch_size)
+        try:
+            self.num_agents = kwargs['num_agents']
+        except KeyError:
+            print("ERROR: MultiAgentReplay needs a 'num_agents' argument.")
+            self.num_agents = 1
+        self._sampling_results = dict()
+        # create buffers
+        self._agent_buffers = [NStepReplay(**kwargs) for _ in range(self.num_agents)]
+        self._dirty = False
+
+    @property
+    def ready(self):
+        """Returns true if buffer has more than batch_size samples"""
+        status = [len(self._agent_buffers[i]) > self._batch_size for i in range(self.num_agents)]
+        
+        return all(status)
+
+    def add(self,**kwargs):
+        try:
+            "states", "actions", "rewards", "next_states", "dones"
+            states = kwargs['states']
+            actions = kwargs['actions']
+            rewards = kwargs['rewards']
+            next_states = kwargs['next_states']
+            dones = kwargs['dones']
+        except KeyError:
+            print("ERROR: MultiAgentReplay needs a 'num_agents' argument.")
+
+        # push data in buffer per agent
+        for i in range(self.num_agents):
+            self._agent_buffers[i].add(
+                states=states[i],
+                actions=actions[i],
+                rewards=rewards[i],
+                next_states=next_states[i],
+                dones=dones[i])
+        # set dirty bit
+        self._dirty = True
+    
+    def sample(self, **kwargs):
+        """Sample a random batch of experiences."""
+        batch_size = kwargs.get('batch_size', self._batch_size)
+        idxes = []
+        for i in range(self.num_agents):
+            idxes.append(np.random.randint(len(self._agent_buffers[i]) - 1, size=batch_size))
+            self._agent_buffers[i]._encode_sample(idxes[i])
+        
+        # now each _agent_buffer has the properties for picking up the data set..
+        # now what ?
+        # need to stack them vertically
+        states = self._agent_buffers[0].states.unsqueeze(1)
+        actions = self._agent_buffers[0].actions.unsqueeze(1)
+        rewards = self._agent_buffers[0].rewards.unsqueeze(1)
+        next_states = self._agent_buffers[0].next_states.unsqueeze(1)
+        dones = self._agent_buffers[0].dones.unsqueeze(1)
+        gammas = self._agent_buffers[0].gammas.unsqueeze(1)
+
+        for i in range(1,self.num_agents):
+            agent_buff = self._agent_buffers[i]
+            states = torch.cat((states,agent_buff.states.unsqueeze(1)))
+            actions = torch.cat((actions,agent_buff.actions.unsqueeze(1)))
+            rewards = torch.cat((rewards,agent_buff.rewards.unsqueeze(1)))
+            next_states = torch.cat((next_states,agent_buff.next_states.unsqueeze(1)))
+            dones = torch.cat((dones,agent_buff.dones.unsqueeze(1)))
+            gammas = torch.cat((gammas,agent_buff.gammas.unsqueeze(1)))
+        
+        self._sampling_results['states'] = states
+        self._sampling_results['actions'] = actions
+        self._sampling_results['rewards'] = rewards
+        self._sampling_results['next_states'] = next_states
+        self._sampling_results['dones'] = dones
+        self._sampling_results['gammas'] = gammas
+        
+    @property
+    def states(self):
+        return self._sampling_results['states']
+    @property
+    def actions(self):
+        return self._sampling_results['actions']
+    @property
+    def rewards(self):
+        return self._sampling_results['rewards']
+    @property
+    def next_states(self):
+        return self._sampling_results['next_states']
+    @property
+    def dones(self):
+        return self._sampling_results['dones']
+    @property
+    def gammas(self):
+        return self._sampling_results['gammas']
+
+
+class MultiAgentPriorityReplay(PriorityReplay):
+    def __init__(self, **kwargs):
+        self.gamma = kwargs.pop('gamma', config.gamma)
+        super(MultiAgentPriorityReplay,self).__init__(**kwargs)
+
+        self.num_agents = kwargs.get('num_agents',0)
+        self._queues = [deque() for _ in range(self.num_agents)]
+        self.episodes = 0
+
+    def add(self, states, actions, rewards, next_states, dones):
+        if (self.num_agents):
+            for i in range(len(dones)):
+                exp = ([states[i]],
+                    [actions[i]],
+                    [rewards[i]],
+                    [next_states[i]],
+                    [dones[i]])
+                self._queues[i].append(exp)
+                if (dones[i]):
+                    self.flush(i)
+                    self.episodes += 1
+        else:
+            super().add(
+                    states=states,
+                    actions=actions,
+                    rewards=rewards,
+                    next_states=next_states,
+                    dones=dones)
+    
+    def flush(self, agent=0, flush_all=False):
+        next_reward = 0
+        while len(self._queues[agent]) > 0:
+            state, action, reward, next_state, done = self._queues[agent].pop()
+            next_reward = np.array(reward) + next_reward*self.gamma
+            super().add(states=state,actions=action,rewards=next_reward,next_states=next_state,dones=1.0)
+        return
+    def clear_queue(self):
+        for i in range(self.num_agents):
+            self._queues[i].clear()
+        avg_episodes = self.episodes/self.num_agents
+        self.episodes = 0
+        return avg_episodes

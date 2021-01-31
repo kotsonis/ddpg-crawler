@@ -1,4 +1,4 @@
-#ref daisatojp
+# ref daisatojp
 
 import os
 import numpy as np
@@ -7,13 +7,9 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn
 from torch.nn.utils import clip_grad_norm_
-from torch.distributions import MultivariateNormal, Categorical
+from torch.distributions import MultivariateNormal
 from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 from torch.utils.tensorboard import SummaryWriter
-
-from ..networks import actor
-from ..networks import critic
-from utils import replaybuffer
 
 from absl import app
 from absl import logging

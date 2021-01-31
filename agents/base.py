@@ -89,10 +89,10 @@ class Agent():
         
         self.noise = OUNoise(self.da)
         #create actor & critic networks
-        actor_dnn_class = kwargs.pop('actor_dnn_class',networks.base.Actor)
+        actor_dnn_class = kwargs.pop('actor_dnn_class',networks.greedy.Actor)
         self.actor = actor_dnn_class(**kwargs).to(self.device)
         self.target_actor = actor_dnn_class(**kwargs).to(self.device)
-        critic_dnn_class = kwargs.pop('critic_dnn_class',networks.base.Critic)
+        critic_dnn_class = kwargs.pop('critic_dnn_class',networks.greedy.Critic)
         self.critic = critic_dnn_class(**kwargs).to(self.device)
         self.target_critic = critic_dnn_class(**kwargs).to(self.device)
 
@@ -188,7 +188,7 @@ class Agent():
             for steps in range(max_frames_per_episode):
                 actions = self.target_actor.action(
                     torch.from_numpy(states).type(
-                        torch.float32).to(self.device)
+                        torch.float32).to(self.device), noise=False
                 ).cpu().numpy()
                 env_info = self.env.step(actions)[self.brain_name]
                 next_states = env_info.vector_observations
@@ -252,16 +252,12 @@ class Agent():
         env_info = self.env.reset(train_mode=True)[self.brain_name]
         explore = True
         while self.iteration < self.training_iterations:
-            #for it in trange(15, leave=False, desc='Episodes {:3d}-{:3d}'.format(i_episode, i_episode+15)):
-            i_episode += 1
-            #env_info = env.reset(train_mode=True)[self.brain_name] # reset the environment
+            env_info = self.env.reset(train_mode=True)[self.brain_name]
             states = env_info.vector_observations             # get the current state of each agent
             agent_scores = np.zeros(num_agents)
             frames = 0
-            if i_episode % 3 == 0:
-                # explore = not explore
-                self.noise.reset()
-            while frames < self.max_frames_per_episode: # each frame
+            self.noise.reset()
+            while frames <= self.max_frames_per_episode: # each frame
                 actions = self.act(states, add_noise=explore)
                 step += 1
                 frames += 1
@@ -270,7 +266,7 @@ class Agent():
                 rewards = np.array(env_info.rewards)                        # get reward (for each agent)
                 dones = np.array(env_info.local_done)                       # see if episode finished
                 agent_scores += rewards                           # update the score (for each agent)
-                if (np.any(np.isnan(rewards))):
+                if (np.any(np.isnan(rewards)) or np.any(np.isnan(next_states)) or np.any(np.isnan(dones))):
                     break
                 # normalize rewards as pct                
                 #if frames < 999: rewards += np.array(dones)*-5.0
@@ -279,15 +275,14 @@ class Agent():
                 # update progress bar
                 if (self.iteration+1) % 10 == 0:
                     total_progress.update(self.iteration-prev_iteration)
-                    total_progress.set_description('step {},tot episodes:{},mean score:{:3.2f},frames/episode:{:9.2f}'.format(
-                                                    self.iteration, i_episode,self.mean_return, np.mean(fpe_window)))
+                    total_progress.set_description('step {},mean score:{:3.2f},frames/episode:{:9.2f}'.format(
+                                                    self.iteration, self.mean_return, np.mean(fpe_window)))
                     prev_iteration = self.iteration
                     
                 states = next_states                              # roll over states to next time step
-                if np.any(dones):
-                    break
+            episodes = self.memory.clear_queue()
 
-            fpe_window.append(frames)
+            fpe_window.append(frames/episodes)
             scores.append(np.mean(agent_scores))              # store episodes mean reward over agents
             self.mean_return = np.mean(agent_scores)
             scores_window.append(np.mean(agent_scores))       # save most recent score
@@ -295,8 +290,8 @@ class Agent():
          
             if np.mean(scores_window)>=solution:
                 if ( not solution_found):
-                    print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode-100, np.mean(scores_window)))
-                    solution_num_episodes = i_episode-100
+                    print('\nEnvironment solved in {:d} iterations!\tAverage Score: {:.2f}'.format(self.iteration, np.mean(scores_window)))
+                    solution_num_episodes = self.iteration
                     solution_found = True
                     break         
 
@@ -307,10 +302,8 @@ class Agent():
         # turn off training mode
         #self.target_actor.eval()
         with torch.no_grad():
-            action = self.target_actor(state)
+            action = self.target_actor.action(state, self.eps)
             # if we are being stochastic, add noise weighted by exploration
-            if add_noise:
-                action += self.eps*self.noise.sample()
         #self.target_actor.train()
         return np.clip(action.data.numpy(), -1, 1)  # TODO: clip according to Unity environment feedback
 
@@ -373,7 +366,7 @@ class Agent():
         future_action = self.target_actor(next_states)
         q_future_state = self.target_critic(next_states, future_action)
         q_future_state *= (1-dones) 
-        q_target = rewards + self.gamma*q_future_state
+        q_target = rewards + gammas*q_future_state
         # -------------------- get current Q value ---------------------------- #
         q_online = self.critic(states,actions)
         # store for tensorboard and priority calculation
