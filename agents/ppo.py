@@ -267,7 +267,7 @@ class PPOAgent():
                     #if epoch > self.min_ppo_epochs:
                     log_probs_all, _ = self.policy.get_probs(all_states, all_actions)
                     kl = (all_old_log_probs - log_probs_all).mean()
-                    if (self.iteration > self.num_start_steps):     # added to ensure there is some harsh distr learning early
+                    if (self.iteration > self.num_start_steps) and epoch >1:     # added to ensure there is some harsh distr learning early
                         if self.policy_stopping_kl_fn(kl.item()):
                             break
             # store info for tensorboard after policy optimization epochs
