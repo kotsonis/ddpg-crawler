@@ -98,8 +98,8 @@ class PPOAgent():
         self.value_optimization_epochs = 20 #80 # 30
         self.policy_sampling_ratio = self.value_sampling_ratio = 0.3
         # self.policy_sampling_ratio = self.value_sampling_ratio = 0.5
-        self.ppo_early_stop = False
-        self.policy_stopping_kl = 15 # 2.5 #0.5 # 0.02
+        self.ppo_early_stop = True
+        self.policy_stopping_kl = 50 # 2.5 #0.5 # 0.02
         if (self.ppo_early_stop):
             self.policy_stopping_kl_fn = lambda x: x> self.policy_stopping_kl
         else:
