@@ -60,7 +60,7 @@ class Actor(nn.Module):
         self.state_fc_1 = nn.Linear(self.ds, self.dim_dense_1).to(device=self.device)
         self.bn1 = nn.BatchNorm1d(self.dim_dense_1).to(device=self.device)
         self.hidden_fc_1 = nn.Linear(self.dim_dense_1,self.dim_dense_2).to(device=self.device)
-        self.hidden_fc_2 = nn.Linear(self.dim_dense_2, self.dim_dense_3).to(self.device)
+        self.hidden_fc_2 = nn.Linear(self.dim_dense_2, self.da).to(self.device)
         self.output_fc = nn.Linear(self.dim_dense_3, self.da).to(self.device)
         self.reset_parameters()
         return
@@ -71,25 +71,24 @@ class Actor(nn.Module):
         self.hidden_fc_2.weight.data.uniform_(*hidden_init(self.hidden_fc_2))
         self.output_fc.weight.data.uniform_(*hidden_init(self.output_fc))
 
-    def forward(self, states):
+    def forward(self, states, action=None, explore=True):
         xs = states.view(-1,self.ds)
         x = F.leaky_relu(self.bn1(self.state_fc_1(xs)))
         x = F.leaky_relu(self.hidden_fc_1(x))
-        x = F.leaky_relu(self.hidden_fc_2(x))
-        return torch.tanh(self.output_fc(x))
+        
+        means = torch.tanh(self.output_fc(x))
+        std = F.softplus(self.hidden_fc_2(x))
+        dist = torch.distributions.Normal(means, std)
+        if actions is None:
+            actions = dist.sample()
+        actions = torch.clip(-1.0,1.0)
+        log_prob = dist.log_prob(actions)
+        return actions, log_prob
+
     def action(self, state, eps=0.5, noise=True):
         """ Generates actions from states. """
         with torch.no_grad():
             actions = self.forward(state) # [B,da]
-            if noise:
-                if (np.random.random() < eps):
-                    cov = torch.eye(actions.shape[1])
-                    if (actions.dim() >1):  # if we are processing more than one agent:
-                        cov = torch.eye(actions.shape[1])*eps
-
-                    dist = torch.distributions.MultivariateNormal(actions,cov)
-                    actions = dist.sample()*eps
-            
         return actions
 
 class Critic(nn.Module):

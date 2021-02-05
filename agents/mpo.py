@@ -12,10 +12,7 @@ from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 
 from absl import app
-from absl import logging
-from absl import flags
 
-config = flags.FLAGS
 flags.DEFINE_float(name='dual_constraint', default=0.1, 
                         help='hard constraint of the E-step')
 flags.DEFINE_float(name='kl_mean_constraint', default=0.01, 

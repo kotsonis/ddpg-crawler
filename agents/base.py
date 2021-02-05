@@ -10,8 +10,7 @@ import random
 import numpy as np
 from tqdm import tqdm
 from tqdm import trange
-from absl import logging
-from absl import flags
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,19 +22,22 @@ import datetime
 import networks
 from utils import replay
 from utils import accumulator
+from absl import logging
+from absl import flags
 
+config = flags.FLAGS
 
 # global config class to share command line/default parameters across modules
-config = flags.FLAGS
+
 flags.DEFINE_float(name='eps_start',default=1.0,
     help='starting exploration rate (0,1]')
 flags.DEFINE_float(name='eps_minimum',default=0.001,
     help='minimum exploration rate')
-flags.DEFINE_float(name='eps_decay',default=0.99995,
+flags.DEFINE_float(name='eps_decay',default=0.99,
     help='eps decay rate. eps=eps*eps_decay')
-flags.DEFINE_float(name='actor_lr',default=3e-4,
+flags.DEFINE_float(name='actor_lr',default=2e-4,
     help='lr for actor optimizer')
-flags.DEFINE_float(name='critic_lr',default=3e-4,
+flags.DEFINE_float(name='critic_lr',default=2e-4,
     help='lr for critic optimizer')
 flags.DEFINE_float(name='max_frames_per_episode',default=1000,
     help='maximum number of frames to process per episode')
@@ -249,7 +251,6 @@ class Agent():
         solution_found = False
         solution = 2000
         prev_iteration = self.iteration
-        env_info = self.env.reset(train_mode=True)[self.brain_name]
         explore = True
         while self.iteration < self.training_iterations:
             env_info = self.env.reset(train_mode=True)[self.brain_name]
@@ -257,7 +258,7 @@ class Agent():
             agent_scores = np.zeros(num_agents)
             frames = 0
             self.noise.reset()
-            while frames <= self.max_frames_per_episode: # each frame
+            while frames <= (self.max_frames_per_episode+1): # each frame
                 actions = self.act(states, add_noise=explore)
                 step += 1
                 frames += 1
@@ -302,7 +303,7 @@ class Agent():
         # turn off training mode
         #self.target_actor.eval()
         with torch.no_grad():
-            action = self.target_actor.action(state, self.eps)
+            action,_ = self.target_actor.action(state, self.eps)
             # if we are being stochastic, add noise weighted by exploration
         #self.target_actor.train()
         return np.clip(action.data.numpy(), -1, 1)  # TODO: clip according to Unity environment feedback
@@ -347,7 +348,12 @@ class Agent():
         except AttributeError:
             weights = torch.ones_like(dones, requires_grad=False)
             idxs = []
-        return states, actions, rewards, next_states, dones, gammas, weights, idxs
+        try:
+            probs = self.memory.probs
+        except AttributeError:
+            probs = torch.ones_like(dones)
+
+        return states, actions, rewards, next_states, dones, gammas, probs, weights, idxs
 
 
     def _learn_step(self):

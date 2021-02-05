@@ -44,9 +44,13 @@ class Actor(Actor):
         mean = torch.sigmoid(self.mean_layer(x))  # (B, da)
         mean = -1.0 + (2.0) * mean
         cholesky_vector = self.cholesky_layer(x)  # (B, (da*(da+1))//2)
+        # calculate the indices in cholesky vector that correspond to the diagonal entries of L
         cholesky_diag_index = torch.arange(da, dtype=torch.long) + 1
         cholesky_diag_index = (cholesky_diag_index * (cholesky_diag_index + 1)) // 2 - 1
-        cholesky_vector[:, cholesky_diag_index] = F.softplus(cholesky_vector[:, cholesky_diag_index])
+        # calculate std deviation of diagonal and update vector
+        std = F.softplus(cholesky_vector[:, cholesky_diag_index])
+        cholesky_vector[:, cholesky_diag_index] = std
+        # create lower triangular matrix and put cholesky output in
         tril_indices = torch.tril_indices(row=da, col=da, offset=0)
         cholesky = torch.zeros(size=(B, da, da), dtype=torch.float32).to(device)
         cholesky[:, tril_indices[0], tril_indices[1]] = cholesky_vector

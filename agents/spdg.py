@@ -42,21 +42,22 @@ class SDPGAgent(Agent):
 
         num_atoms = self.num_atoms
         # ---------------- sample a batch of experiences ---------------------- #
-        states,actions,rewards,next_states,dones,gammas, weights, indices = self.sample()
+        states,actions,rewards,next_states,dones,gammas, old_probs, weights, indices = self.sample()
         
         # in case we have stored a multi-agent experience, we unroll the S,A,R,S,done, gammas
         
-        states = states.view(-1,self.ds).detach()
+        states = states.view(-1,self.ds)
         self.B = states.shape[0]
-        actions = actions.view(-1,self.da).detach()
-        rewards = rewards.view(-1,1).detach()
-        next_states = next_states.view(-1,self.ds).detach()
+        actions = actions.view(-1,self.da)
+        rewards = rewards.view(-1,1)
+        next_states = next_states.view(-1,self.ds)
         dones = dones.view(-1,1)
+        old_probs = self.target_actor(states,actions)[1].detach()
         gammas = gammas.view(-1,1)
         # torch.autograd.set_detect_anomaly(True)
         # -------------------- get target Q value ----------------------------- #
         with torch.no_grad():
-            future_action = self.target_actor(next_states) # size [B,da]
+            future_action,future_log_probs = self.target_actor(next_states) # size [B,da]
             # sample from gaussian distribution for future_q sampling
             noise_target = torch.normal(
                                         mean=0.0,
@@ -73,12 +74,12 @@ class SDPGAgent(Agent):
                                     mean=0.0,
                                     std=1,
                                     size=(self.B, num_atoms, 1),
-                                    device=self.device,
-                                    requires_grad=False) # size [B,num_atoms,1]
+                                    device=self.device) # size [B,num_atoms,1]
         q_online = self.critic(states,actions, noise_online) # [B,num_atoms]
-        td_error = q_target.mean(1) - q_online.mean(1)
+        
         # store for tensorboard and priority calculation
         with torch.no_grad():
+            td_error = q_target.mean(1) - q_online.mean(1)
             self._current_q = q_online.detach().mean(1)  
             self.mean_est_q = self._current_q.mean()
         
@@ -101,7 +102,7 @@ class SDPGAgent(Agent):
         # create vector of importance taus, ie the tau in (tau-dirac((x-y)<0.)
         min_tau = 1/(2*num_atoms)
         max_tau = (2*num_atoms+1)/(2*num_atoms)
-        tau = torch.arange(start=min_tau, end=max_tau, step= 1/num_atoms, device=self.device, requires_grad=False).unsqueeze(0)
+        tau = torch.arange(start=min_tau, end=max_tau, step= 1/num_atoms, device=self.device).unsqueeze(0)
         inv_tau = 1.0 - tau
 
         loss = torch.where(error_loss.lt(0.0), inv_tau * huber_loss, tau*huber_loss) # loss size [B, num_atoms, num_atoms]
@@ -117,7 +118,7 @@ class SDPGAgent(Agent):
 
         # --------------------- optimize the critic ---------------------------- #
         self.critic_optimizer.zero_grad()
-        critic_loss_batch.backward(retain_graph=True)
+        critic_loss_batch.backward()
         self.critic_optimizer.step()
         # ---------------------- compute actor loss ---------------------------- #
         # we want maximum reward (Q) so loss is negative of current Q
@@ -125,17 +126,23 @@ class SDPGAgent(Agent):
                                     mean=0.0,
                                     std=1,
                                     size=(self.B, num_atoms, 1),
-                                    device=self.device,
-                                    requires_grad=False) # size [B,num_atoms,1]
+                                    device=self.device) # size [B,num_atoms,1]
+        best_action,new_log_probs = self.actor(states)
+        actor_loss = self.critic(states, best_action, noise_actor) # [M*Agents,num_atoms]
+        actor_loss = actor_loss.mean(dim=-1)
+        ratio = torch.exp(new_log_probs - old_probs.squeeze(-1))
+        clip = torch.clamp(ratio, 0.8, 1.2)
+        clipped_surrogate = torch.min(ratio*actor_loss, clip*actor_loss)
 
-        actor_loss = - self.critic(states, self.actor(states), noise_actor) # [M*Agents,num_atoms]
-        actor_loss = actor_loss.mean() # scalar                
+        
+        actor_loss = -clipped_surrogate.mean()
         # store loss for tensorboard
         with torch.no_grad():
             self.mean_loss_p = actor_loss                  
         # --------------------- optimize the actor ----------------------------- #
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
+        nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
         self.actor_optimizer.step()
         
         # --------------------- Prioritized Replay Buffer ---------------------- #

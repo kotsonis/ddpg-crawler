@@ -5,6 +5,7 @@ from absl import flags
 
 from unityagents import UnityEnvironment
 from agents.spdg import SDPGAgent
+from agents.ppo import PPOAgent
 from utils import replay
 
 config = flags.FLAGS
@@ -32,7 +33,8 @@ def main(argv):
     logging.set_verbosity('info')
     # modify some parameters of training
     env = UnityEnvironment(file_name=config.env, worker_id = 1)
-    model = SDPGAgent(device=config.device,env=env, replay_buffer_class=replay.MultiAgentPriorityReplay)
+    model = PPOAgent(device=config.device,env=env)
+    # model = SDPGAgent(device=config.device,env=env, replay_buffer_class=replay.MultiAgentPriorityReplay)
     if config.load is not None:
         model.load_model(load_model = config.load)
     if config.play is not None:

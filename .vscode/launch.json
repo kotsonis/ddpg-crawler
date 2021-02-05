@@ -12,12 +12,29 @@
             "console":"integratedTerminal",
             "args": ["--train", 
                      "--log_dir", "log_spdg_unrolled",
+                     // "--log_dir", "log_ppo",
                      "--training_iterations", "100000",
                      "--n_step", "5",
                      "--eps_start", "0.99",                                  
                      "--eps_minimum", "0.2",
                      "--memory_batch_size", "256",
                      "--memory_size", "100000",
+                     ]
+        },
+        {
+            "name":"Crawler Train PPO",
+            "type":"python",
+            "request":"launch",
+            "program":"crawler.py",
+            "console":"integratedTerminal",
+            "args": ["--train", 
+                     "--log_dir", "log_ppo_end",
+                     "--PPO_iterations", "2048",
+                     "--eps_start", "0.5",
+                     "--eps_minimum", "0.001",
+                     "--training_iterations", "1000",
+                     "--actor_lr", "1e-4",
+                     "--critic_lr", "5e-4"
                      ]
         },
         {

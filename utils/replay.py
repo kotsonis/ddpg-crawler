@@ -101,26 +101,54 @@ class PPOBuffer(Buffer):
     """Replay buffer class that stores also the log probabilities provided """
 
     def __init__(self, **kwargs):
-        super(PPOBuffer, self).__init__(**kwargs)
         ## add probs to data items
-        self.experience = namedtuple("Experience", self.experience._fields + tuple("probs"))
+        super(PPOBuffer,self).__init__(**kwargs)
+        self.experience = namedtuple("Experience", tuple((*self.experience._fields, "probs")))
+        self.gamma = kwargs.pop('gamma', config.gamma)
+        self.num_agents = kwargs.get('num_agents',0)
+        self._queues = [deque() for _ in range(self.num_agents)]
+        self.episodes = 0
     
     @property
     def probs(self):
         return self._sampling_results['probs']
-
-    def add(self, **kwargs):
-        # basic implementation. store in buffer and increment index
-        """ Add a new experience to replay buffer """
-        data = self.experience(**kwargs)
-        self._buffer.append(data)
-
-    def _encode_sample(self, idxes):
-        "encodes batch of experiences indexed by idxes from buffer and makes them available in properties"
-        pass
-        #res = [self._buffer[idx] for idx in idxes]
-        
+    
+    def add(self, states, actions, rewards, next_states, dones, probs):
+        if (self.num_agents):
+            for i in range(len(dones)):
+                exp = ([states[i]],
+                    [actions[i]],
+                    [rewards[i]],
+                    [next_states[i]],
+                    [dones[i]],
+                    [probs[i]])
+                self._queues[i].append(exp)
+                if (dones[i]):
+                    self.flush(i)
+                    self.episodes += 1
+        else:
+            super().add(
+                    states=states,
+                    actions=actions,
+                    rewards=rewards,
+                    next_states=next_states,
+                    dones=dones,
+                    probs=probs)
+    
+    def flush(self, agent=0, flush_all=False):
+        next_reward = 0
+        while len(self._queues[agent]) > 0:
+            state, action, reward, next_state, done, prob = self._queues[agent].pop()
+            next_reward = np.array(reward) + next_reward*self.gamma
+            super().add(states=state,actions=action,rewards=next_reward,next_states=next_state,dones=1.0, probs=prob)
         return
+    def clear_queue(self):
+        for i in range(self.num_agents):
+            self._queues[i].clear()
+        avg_episodes = self.episodes/self.num_agents
+        self.episodes = 0
+        return avg_episodes
+
 
 
 #
@@ -489,6 +517,9 @@ class MultiAgentPriorityReplay(PriorityReplay):
     def clear_queue(self):
         for i in range(self.num_agents):
             self._queues[i].clear()
-        avg_episodes = self.episodes/self.num_agents
+        if (self.episodes >= 1):
+            avg_episodes = self.episodes/self.num_agents
+        else:
+            avg_episodes = 1.0/self.num_agents
         self.episodes = 0
         return avg_episodes
