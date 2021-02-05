@@ -96,7 +96,7 @@ class PPOAgent():
 
         self.policy_optimization_epochs = 20 #80  # 30
         self.value_optimization_epochs = 20 #80 # 30
-        self.policy_sampling_ratio = self.value_sampling_ratio = 0.3
+        self.policy_sampling_ratio = self.value_sampling_ratio = 0.4
         # self.policy_sampling_ratio = self.value_sampling_ratio = 0.5
         self.ppo_early_stop = True
         self.policy_stopping_kl = 1.5 # 2.5 #0.5 # 0.02
@@ -108,11 +108,13 @@ class PPOAgent():
         self.policy_clip_range =  0.2
         self.value_clip_range = float('inf')
         self.gae_tau = 0.97
-        self.beta = 0.001 #0.2 # 0.001 #0.01
+        self.beta = 0.0005 #0.2 # 0.001 #0.01
         self.policy_gradient_clip = float('inf') #1.0
         self.value_gradient_clip = float('inf')
         self.start_random_steps = 0
         self.num_start_steps = 15
+        self.min_policy_epochs = 3
+
     def _next_eps(self):
         """updates exploration factor"""
         self.eps = max(self.eps_minimum, self.eps*self.eps_decay)
@@ -267,7 +269,7 @@ class PPOAgent():
                     #if epoch > self.min_ppo_epochs:
                     log_probs_all, _ = self.policy.get_probs(all_states, all_actions)
                     kl = (all_old_log_probs - log_probs_all).mean()
-                    if (self.iteration > self.num_start_steps) and epoch >1:     # added to ensure there is some harsh distr learning early
+                    if (self.iteration > self.num_start_steps) and epoch >self.min_policy_epochs:     # added to ensure there is some harsh distr learning early
                         if self.policy_stopping_kl_fn(kl.item()):
                             break
             # store info for tensorboard after policy optimization epochs
