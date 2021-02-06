@@ -51,12 +51,14 @@ class PPOAgent():
         upper_bound = np.ones((self.da))*0.99999
         self.action_bounds = (low_bound,upper_bound)
         kwargs['action_bounds'] = self.action_bounds
-        hidden_dims=(512,256) # (512,256,256)
+        hidden_dims=(600,100) # (512,256,256)
         kwargs['hidden_dims'] = hidden_dims
         # create replay buffer
         #self.memory = replay.PPOBuffer(**kwargs)
         activation_fc= F.relu # torch.tanh # lambda x: F.leaky_relu(x, negative_slope=0.5) # F.gelu # F.relu
         kwargs['activation_fc'] = activation_fc
+        kwargs['log_std_min'] = -22
+
         #create policy
         self.policy = networks.distributional.PolicyPPO(**kwargs)
         self.value = networks.distributional.ValuePPO(**kwargs)
@@ -94,7 +96,7 @@ class PPOAgent():
         self.episodes = 0
         self.episodes_rewards = deque(maxlen=100)
 
-        self.policy_optimization_epochs = 20 #80  # 30
+        self.policy_optimization_epochs = 80 #80  # 30
         self.value_optimization_epochs = 20 #80 # 30
         self.policy_sampling_ratio = self.value_sampling_ratio = 0.4
         # self.policy_sampling_ratio = self.value_sampling_ratio = 0.5
@@ -109,11 +111,11 @@ class PPOAgent():
         self.value_clip_range = float('inf')
         self.gae_tau = 0.97
         self.beta = 0.0005 #0.2 # 0.001 #0.01
-        self.policy_gradient_clip = float('inf') #1.0
+        self.policy_gradient_clip = 2.0 # float('inf') #1.0
         self.value_gradient_clip = float('inf')
         self.start_random_steps = 0
         self.num_start_steps = 15
-        self.min_policy_epochs = 3
+        self.min_policy_epochs = 10
 
     def _next_eps(self):
         """updates exploration factor"""
