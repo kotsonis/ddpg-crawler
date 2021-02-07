@@ -205,7 +205,7 @@ class PolicyPPO(nn.Module):
         self.output_layer_mean.weight.data.uniform_(*hidden_init(self.output_layer_mean))
 
         self.output_layer_log_std = nn.Linear(hidden_dims[-1], action_size)
-        self.output_layer_log_std.weight.data.uniform_(*hidden_init(self.output_layer_log_std))
+        # self.output_layer_log_std.weight.data.uniform_(-5,-1) # *hidden_init(self.output_layer_log_std))
 
         # move to GPU if available
         device = "cpu"
@@ -248,9 +248,7 @@ class PolicyPPO(nn.Module):
         x_mean = self.output_layer_mean(x)
         # calculate the log of the standard deviation and clamp within reasonable values
         x_log_std = self.output_layer_log_std(x)
-        x_log_std = torch.clamp(x_log_std, 
-                                self.log_std_min, 
-                                self.log_std_max)
+        # x_log_std = torch.clamp(x_log_std, self.log_std_min, self.log_std_max)
         return x_mean, x_log_std
     
     def full(self, state, epsilon = 1e-6):

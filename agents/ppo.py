@@ -96,7 +96,7 @@ class PPOAgent():
         self.episodes = 0
         self.episodes_rewards = deque(maxlen=100)
 
-        self.policy_optimization_epochs = 80 #80  # 30
+        self.policy_optimization_epochs = 15 #80  # 30
         self.value_optimization_epochs = 20 #80 # 30
         self.policy_sampling_ratio = self.value_sampling_ratio = 0.4
         # self.policy_sampling_ratio = self.value_sampling_ratio = 0.5
@@ -114,8 +114,8 @@ class PPOAgent():
         self.policy_gradient_clip = 2.0 # float('inf') #1.0
         self.value_gradient_clip = float('inf')
         self.start_random_steps = 0
-        self.num_start_steps = 15
-        self.min_policy_epochs = 10
+        self.num_start_steps = 0
+        self.min_policy_epochs = 3 #10
 
     def _next_eps(self):
         """updates exploration factor"""
@@ -194,7 +194,6 @@ class PPOAgent():
             )
         adv = returns - values
         # normalize advantages
-        adv = (adv - adv.mean())  / (adv.std() + 1.0e-6)
         # return data for subsequent sampling
         return states, actions, old_log_probs, returns, adv
 
@@ -233,7 +232,10 @@ class PPOAgent():
             # normalize returns
             epoch = 0
             
-        
+            if self.iteration < 20:
+                self.beta = -0.001
+            else:
+                self.beta = 0.001
             # optimize policy
             for policy_epochs in range(self.policy_optimization_epochs):
                 self.tot_epochs += 1
@@ -246,6 +248,7 @@ class PPOAgent():
                     old_log_probs = all_old_log_probs[idx]
                     returns = all_returns[idx]
                     gae = all_gae[idx]
+                    gae = (gae - gae.mean())  / (gae.std() + 1.0e-6)
                     # returns = (returns - returns.mean())  / (returns.std() + 1.0e-6)
                     # gae = (gae - gae.mean())  / (gae.std() + 1.0e-6)
                     
@@ -259,7 +262,7 @@ class PPOAgent():
                 policy_objective_clamped = gae*ratio_clamped
 
                 policy_loss = -torch.min(policy_objective, policy_objective_clamped).mean()
-                entropy_loss = -entropy.mean()*self.beta
+                entropy_loss = -entropy.mean()*self.beta #-entropy.mean()*self.beta
 
                 self.policy_optimizer.zero_grad()
                 (policy_loss+entropy_loss).backward()
