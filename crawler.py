@@ -13,7 +13,7 @@ flags.DEFINE_string(name='device', default='cpu',
                         help="Device to use for torch")
 flags.DEFINE_string(name='env', default='../../deep-reinforcement-learning/p2_continuous-control/Crawler_Windows_x86_64/Crawler.exe',
                         help='Unity Environment to load')
-flags.DEFINE_boolean(name='render', default=True, help="execute Unity Enviroment with display")
+flags.DEFINE_boolean(name='render', default=False, help="execute Unity Enviroment with display")
 flags.DEFINE_boolean(name='debug', default=None, help="run in debug mode")
 flags.DEFINE_string(name='load',default=None,
                         help='model file to load with path')
@@ -32,7 +32,7 @@ def main(argv):
     logging.get_absl_handler().use_absl_log_file()
     logging.set_verbosity('info')
     # modify some parameters of training
-    env = UnityEnvironment(file_name=config.env, worker_id = 1)
+    env = UnityEnvironment(file_name=config.env, worker_id = 1, no_graphics=config.render)
     model = PPOAgent(device=config.device,env=env)
     # model = SDPGAgent(device=config.device,env=env, replay_buffer_class=replay.MultiAgentPriorityReplay)
     if config.load is not None:

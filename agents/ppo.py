@@ -55,7 +55,7 @@ class PPOAgent():
         kwargs['hidden_dims'] = hidden_dims
         # create replay buffer
         #self.memory = replay.PPOBuffer(**kwargs)
-        activation_fc= F.relu # torch.tanh # lambda x: F.leaky_relu(x, negative_slope=0.5) # F.gelu # F.relu
+        activation_fc= torch.tanh # torch.tanh # lambda x: F.leaky_relu(x, negative_slope=0.5) # F.gelu # F.relu
         kwargs['activation_fc'] = activation_fc
         kwargs['log_std_min'] = -22
 
@@ -97,7 +97,7 @@ class PPOAgent():
         self.episodes_rewards = deque(maxlen=100)
 
         self.policy_optimization_epochs = 15 #80  # 30
-        self.value_optimization_epochs = 20 #80 # 30
+        self.value_optimization_epochs = 10 #80 # 30
         self.policy_sampling_ratio = self.value_sampling_ratio = 0.2
         # self.policy_sampling_ratio = self.value_sampling_ratio = 0.5
         self.ppo_early_stop = True
@@ -115,7 +115,7 @@ class PPOAgent():
         self.value_gradient_clip = float('inf')
         self.start_random_steps = 0
         self.num_start_steps = 0
-        self.min_policy_epochs = 5 #10
+        self.min_policy_epochs = 10 #10
 
     def _next_eps(self):
         """updates exploration factor"""
@@ -236,6 +236,36 @@ class PPOAgent():
                 self.beta = -0.001
             else:
                 self.beta = 0.01
+            # optimize value
+            for value_epochs in range(self.value_optimization_epochs):
+                # sample a batch
+                batch_size = int(self.value_sampling_ratio*n_samples)
+                idx = np.random.choice(n_samples, batch_size, replace=False)
+                states = all_states[idx]
+                returns = all_returns[idx].squeeze(-1)
+                values = all_values[idx]
+               
+                values_pred = self.value(states)
+
+                #values_pred_clipped = values + (values_pred - values).clamp(-self.value_clip_range, 
+                #                                                             self.value_clip_range)
+                # v_loss = (returns - values_pred).pow(2)
+                # v_loss_clipped = (returns - values_pred_clipped).pow(2)
+                value_loss = F.smooth_l1_loss(values_pred,returns)
+                
+                self.value_optimizer.zero_grad()
+                value_loss.backward()
+                nn.utils.clip_grad_norm_(self.value.parameters(), self.value_gradient_clip)
+                self.value_optimizer.step()
+                
+                with torch.no_grad():
+                    # check if we can break early
+                    val_pred_all = self.value(all_states)
+                    mse = (all_values - val_pred_all).pow(2).mul(0.5).mean()
+                    if mse.item() > self.value_stopping_mse:
+                        break
+            # store info for tensorboard after policy optimization epochs
+
             # optimize policy
             for policy_epochs in range(self.policy_optimization_epochs):
                 self.tot_epochs += 1
@@ -286,35 +316,7 @@ class PPOAgent():
                 self.kl_distance = kl.item()
             
             
-            # optimize value
-            for value_epochs in range(self.value_optimization_epochs):
-                # sample a batch
-                batch_size = int(self.value_sampling_ratio*n_samples)
-                idx = np.random.choice(n_samples, batch_size, replace=False)
-                states = all_states[idx]
-                returns = all_returns[idx].squeeze(-1)
-                values = all_values[idx]
-               
-                values_pred = self.value(states)
-
-                #values_pred_clipped = values + (values_pred - values).clamp(-self.value_clip_range, 
-                #                                                             self.value_clip_range)
-                # v_loss = (returns - values_pred).pow(2)
-                # v_loss_clipped = (returns - values_pred_clipped).pow(2)
-                value_loss = F.smooth_l1_loss(values_pred,returns)
-                
-                self.value_optimizer.zero_grad()
-                value_loss.backward()
-                nn.utils.clip_grad_norm_(self.value.parameters(), self.value_gradient_clip)
-                self.value_optimizer.step()
-                
-                with torch.no_grad():
-                    # check if we can break early
-                    val_pred_all = self.value(all_states)
-                    mse = (all_values - val_pred_all).pow(2).mul(0.5).mean()
-                    if mse.item() > self.value_stopping_mse:
-                        break
-            # store info for tensorboard after policy optimization epochs
+            
             with torch.no_grad():
                 self.mean_loss_value = value_loss
                 self.value_mse = mse.item()

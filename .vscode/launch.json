@@ -95,15 +95,16 @@
             "console":"integratedTerminal",
             "args": [
                 "--train", 
-                "--log_dir", "log_spdg_no_accumulator",
-                "--training_iterations", "50000",
-                "--n_step", "20",
-                "--eps_start", "0.99",                                  
-                "--eps_minimum", "0.3",
-                "--memory_batch_size", "512",
+                "--log_dir", "log_ppo_end",
+                "--PPO_iterations", "2048",
+                "--eps_start", "0.5",
+                "--eps_minimum", "0.001",
+                "--training_iterations", "1000",
+                "--actor_lr", "8e-5",
+                "--critic_lr", "5e-4",
                 "--env", "./Crawler_Windows_x86_64/Crawler.exe",
                 "--device", "cuda",
-                "--memory_size", "1000000",
+                "--render"
                 
                     ]
         },
