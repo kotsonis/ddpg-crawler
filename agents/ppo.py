@@ -109,13 +109,13 @@ class PPOAgent():
         self.value_stopping_mse = 10 # 0.5
         self.policy_clip_range =  0.2
         self.value_clip_range = float('inf')
-        self.gae_tau = 0.97
+        self.gae_tau = 0.85 # 0.80 #0.85 # 0.90 # 0.98 # 0.97
         self.beta = 0.0005 #0.2 # 0.001 #0.01
         self.policy_gradient_clip = 2.0 # float('inf') #1.0
         self.value_gradient_clip = float('inf')
         self.start_random_steps = 0
         self.num_start_steps = 0
-        self.min_policy_epochs = 10 #10
+        self.min_policy_epochs = 5 #10
 
     def _next_eps(self):
         """updates exploration factor"""
@@ -235,7 +235,7 @@ class PPOAgent():
             if self.iteration < 20:
                 self.beta = -0.001
             else:
-                self.beta = 0.01
+                self.beta = 0 #0.01
             # optimize value
             for value_epochs in range(self.value_optimization_epochs):
                 # sample a batch
