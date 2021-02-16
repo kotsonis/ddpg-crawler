@@ -29,14 +29,12 @@ def main(argv):
             os.makedirs(config.log_dir)
     logging.get_absl_handler().use_absl_log_file()
     logging.set_verbosity('info')
-    # modify some parameters of training
     env = UnityEnvironment(file_name=config.env, worker_id = 1, no_graphics=config.render)
     model = PPOAgent(device=config.device,env=env)
-    # model = SDPGAgent(device=config.device,env=env, replay_buffer_class=replay.MultiAgentPriorityReplay)
     if config.load is not None:
         model.load_model(load_model = config.load)
     if config.play is not None:
-        model.play(episodes= config.episodes,frames = 1000)
+        model.play(episodes= config.episodes)
     if config.train is not None:
         model.train(
             training_iterations=config.training_iterations,

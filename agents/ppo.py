@@ -258,7 +258,6 @@ class PPOAgent():
 
     def play(self, 
             episodes=10,
-            max_frames_per_episode=1000,
             **kwargs):
         """plays an environment with model for requested episodes."""
         buff = []
