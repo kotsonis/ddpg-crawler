@@ -35,7 +35,7 @@
                      "--training_iterations", "300",
                      "--actor_lr", "8e-5",
                      "--memory_batch_size", "512",
-                     "--gamma", "0.99"
+                     "--gamma", "0.995"
                      ]
         },
         {
@@ -47,7 +47,7 @@
             "args":["--play", 
                 "--log_dir", "log_ppo",
                 "--notb",
-                "--episodes", "50", 
+                "--episodes", "20", 
                 "--load", "./model/model_saved.pt"],
         },
         {

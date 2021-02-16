@@ -15,8 +15,6 @@ from tqdm import tqdm
 from tqdm import trange
 
 config = flags.FLAGS
-flags.DEFINE_float(name='max_frames_per_episode',default=1000,
-    help='maximum number of frames to process per episode')
 
 flags.DEFINE_float(name='actor_lr',default=2e-4,
     help='lr for actor optimizer')
@@ -41,7 +39,7 @@ flags.DEFINE_float(name='entropy_beta', default=0.002,
 flags.DEFINE_float(name='vf_coeff', default=0.01,
     help='coefficient to multiply value loss in PPO step')
 flags.DEFINE_integer(name='memory_batch_size',default=128,
-                     help='batch size of memory samples per epoch')
+    help='batch size of memory samples per epoch')
 flags.DEFINE_bool(name='tb', default=True,
     help='enable tensorboard logging')
 class PPOAgent():
@@ -73,8 +71,6 @@ class PPOAgent():
         upper_bound = np.ones((self.da))*0.99999
         self.action_bounds = (low_bound,upper_bound)
         kwargs['action_bounds'] = self.action_bounds
-        
-        
         # set DNN hidden layers dimensions
         hidden_dims=(600,100)
         kwargs['hidden_dims'] = hidden_dims
@@ -82,7 +78,6 @@ class PPOAgent():
         activation_fc= torch.tanh
         kwargs['activation_fc'] = activation_fc
         kwargs['log_std_min'] = -22
-
         #create policy
         self.policy = networks.distributional.PPO(**kwargs)
         # setup optimizers
@@ -96,7 +91,6 @@ class PPOAgent():
         self.policy_scheduler = torch.optim.lr_scheduler.LambdaLR(self.policy_optimizer, lr_lambda=lrate_schedule)
         
         # common training / playing parameters
-        self.max_frames_per_episode = kwargs.get('max_frames_per_episode',config.max_frames_per_episode)
         self.model_save_period = 500
         self.iteration = 0
         self.saved_iteration = 0
@@ -123,9 +117,6 @@ class PPOAgent():
         self.entropy_coeff = kwargs.get('entropy_beta', config.entropy_beta)
         self.vf_coeff = kwargs.get('vf_coeff', config.vf_coeff)
         self.policy_gradient_clip = float('inf')
-        self.start_random_steps = 0
-        self.num_start_steps = 0
-        self.min_policy_epochs = 5 #10
         # tb tracking fields
         self.tb_loss_value = 0.0
         self.tb_loss_policy = 0.0
@@ -136,21 +127,16 @@ class PPOAgent():
         self.tb_avg_entropy = 0.0
         self.tb_epi = 0 # epochs per iteration
 
-    def _next_eps(self):
-        """updates exploration factor"""
-        self.eps = max(self.eps_minimum, self.eps*self.eps_decay)
     
     def collect_trajectories(self, num_trajectories):
+        """collect trajectories over a horizon from environment"""
         agent_scores = np.zeros(self.num_agents)
         horizon = deque()
-
         env = self.env
         env_info = env.reset(train_mode=True)[self.brain_name]
         states = env_info.vector_observations
         for _ in range(num_trajectories):
-            self.start_random_steps += 1
-            values, actions, log_probs = self.policy.np_action(states, eps= 0.0) # self.eps)
-
+            values, actions, log_probs = self.policy.np_action(states, eps= 0.0)
             # send all actions to tne environment and collect observation
             env_info = env.step(actions)[self.brain_name]     
             next_states = np.array(env_info.vector_observations)
@@ -168,11 +154,7 @@ class PPOAgent():
                 horizon.append((states,actions,rewards,dones,log_probs,values))
                 states = next_states
         
-        # decrease exploration ratio
-        self._next_eps()
-
         # process horizon backwards for generalized advantage
-
         next_values = self.policy.get_np_value(states)
         next_v = torch.tensor(next_values, dtype=torch.float32)
         gae = torch.zeros(self.num_agents, 1).to(self.device)
@@ -217,25 +199,14 @@ class PPOAgent():
         self.training_iterations = kwargs.pop('training_iterations', config.training_iterations)
         max_frames = kwargs.setdefault('trajectories',config.trajectories)
         self.training_iterations += self.saved_iteration  # in case we are continuing training
-
         env = self.env
-        scores = []                                 # list containing scores from each episode
-        scores_window = deque(maxlen=100)           # last 100 scores
-        num_agents = self.num_agents
-        agent_scores = np.zeros(num_agents)         # initialize the score (for each agent)
-        
-        prev_iteration = 0
-        self.t_step = 0
-        step = 0
+        agent_scores = np.zeros(self.num_agents)         # initialize the score (for each agent)
         total_progress = tqdm(
                              total=self.training_iterations-self.iteration,
                              desc='step {}, epochs: {}, episodes: {}, mean score:{:3.2f},'.format(
                                                     self.iteration, self.tot_epochs, self.episodes,self.tb_avg_return))
         
-        solution_found = False
-        solution = 2000
         prev_iteration = self.iteration
-        self.min_ppo_epochs = 5
         while self.iteration < self.training_iterations:
             observations = self.collect_trajectories(max_frames)
             epochs, policy_loss, value_loss, entropy_loss, kl_distance, values_mean, entropy_mean = self._learn_step(observations)
@@ -260,20 +231,14 @@ class PPOAgent():
             episodes=10,
             **kwargs):
         """plays an environment with model for requested episodes."""
-        buff = []
         logging.info('Starting a Play session')
         logging.info('Will run for %d episodes', episodes)
-        env_info = self.env.reset(train_mode=False)[self.brain_name]
-        num_agents = len(env_info.agents)
-        states = env_info.vector_observations
-        scores = [] # list containing scores from each episode
-        agent_scores = np.zeros(num_agents)
+        agent_scores = np.zeros(self.num_agents)
         env_info = self.env.reset(train_mode=False)[self.brain_name]
         while self.episodes < episodes:
             # initialize the score (for each agent)
             frames = 0            
             states = env_info.vector_observations
-            #for steps in range(max_frames_per_episode):
             actions = self.policy.np_deterministic_action(states) # self.eps)
             # send all actions to tne environment and collect observation
             env_info = self.env.step(actions)[self.brain_name]     
@@ -293,15 +258,15 @@ class PPOAgent():
                         agent_scores[i]
                     ))
                     agent_scores[i] = 0.0
-
             states = next_states
                 
-        print('\rEpisodes: {}\t running mean score: {:.2f}'
+        print('Total Episodes: {}\t running mean score: {:.2f}'
             .format(
                 self.episodes,
                 np.mean(self.episodes_rewards)))
 
     def _learn_step(self, observations_dict):
+        """perform one PPO learning step across defined epochs"""
         all_states = observations_dict['states']
         all_actions = observations_dict['actions']
         all_old_log_probs = observations_dict['old_log_probs']
@@ -385,7 +350,10 @@ class PPOAgent():
         # decrease LR
         self.policy_scheduler.step()
         return self.iteration
+
     def _tb_init(self):
+        """initialize tensorboard logging"""
+
         ts = datetime.datetime.now().replace(microsecond=0).strftime("%Y%m%d_%H%M%S")
         self.writer = SummaryWriter(os.path.join(self.log_dir, 'tb',ts))
         self.tensorboard_update_period = 1
