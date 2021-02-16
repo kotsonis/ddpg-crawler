@@ -6,11 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
-from utils.OUNoise import OUNoise
 import copy
 import networks
-from agents.base import Agent
-from utils import replay
 from absl import logging
 from absl import flags
 from collections import deque
@@ -18,8 +15,35 @@ from tqdm import tqdm
 from tqdm import trange
 
 config = flags.FLAGS
-flags.DEFINE_integer(name='PPO_iterations',default=500,
-    help='number of iteration steps to perform per sample in PPO')
+flags.DEFINE_float(name='max_frames_per_episode',default=1000,
+    help='maximum number of frames to process per episode')
+
+flags.DEFINE_float(name='actor_lr',default=2e-4,
+    help='lr for actor optimizer')
+flags.DEFINE_string(name='load_model',default='./model/model_saved.pt',
+    help='saved agent model to load')
+flags.DEFINE_integer(name='training_iterations',default=1000,
+    help='number of agent/env interactions to perform')
+flags.DEFINE_float(name='gamma',default=0.99,
+    help='discount factor for future rewards (0,1]')
+flags.DEFINE_integer(name='trajectories',default=2048,
+    help='number of trajectories to sample per iteration')
+flags.DEFINE_integer(name='policy_optimization_epochs', default=160,
+    help='number of epochs to run (K in paper)')
+flags.DEFINE_float(name='policy_stopping_kl', default=0.3,
+    help='log KL divergence to early stop PPO improvements')
+flags.DEFINE_float(name='policy_clip_range', default=0.2,
+    help='clipping threshold for PPO policy optimization')
+flags.DEFINE_float(name='gae_lambda', default=0.85,
+    help='lambda coefficient for generalized advantage estimate')
+flags.DEFINE_float(name='entropy_beta', default=0.002,
+    help='coefficient to multiply beta loss in PPO step')
+flags.DEFINE_float(name='vf_coeff', default=0.01,
+    help='coefficient to multiply value loss in PPO step')
+flags.DEFINE_integer(name='memory_batch_size',default=128,
+                     help='batch size of memory samples per epoch')
+flags.DEFINE_bool(name='tb', default=True,
+    help='enable tensorboard logging')
 class PPOAgent():
     """PPO Agent """
     def __init__(
@@ -31,10 +55,6 @@ class PPOAgent():
         self.name = kwargs.setdefault('name','PPOAgent')
         self.gamma = kwargs.setdefault('gamma', config.gamma)
         logging.info('Create an Agent type %s', self.name)
-        self.eps_start = kwargs.get('eps_start', config.eps_start)
-        self.eps_minimum = kwargs.get('eps_minimum', config.eps_minimum)
-        self.eps_decay = kwargs.get('eps_decay', config.eps_decay)
-        self.eps = self.eps_start
 
         self.save_counter = 0
         #process Unity environment details
@@ -47,23 +67,24 @@ class PPOAgent():
         self.env_info = self.env.reset(train_mode=False)[self.brain_name]
         self.num_agents = len(self.env_info.agents)
         kwargs['num_agents'] = self.num_agents
+
+        # limit action bounds to less than 1 (so that arctanh does not return +- infinity)
         low_bound = np.ones((self.da))*-0.99999
         upper_bound = np.ones((self.da))*0.99999
         self.action_bounds = (low_bound,upper_bound)
         kwargs['action_bounds'] = self.action_bounds
-        hidden_dims=(600,100) # (512,256,256)
+        
+        
+        # set DNN hidden layers dimensions
+        hidden_dims=(600,100)
         kwargs['hidden_dims'] = hidden_dims
-        # create replay buffer
-        #self.memory = replay.PPOBuffer(**kwargs)
-        activation_fc= torch.tanh # torch.tanh # lambda x: F.leaky_relu(x, negative_slope=0.5) # F.gelu # F.relu
+        # select activation function
+        activation_fc= torch.tanh
         kwargs['activation_fc'] = activation_fc
         kwargs['log_std_min'] = -22
 
         #create policy
-        self.policy = networks.distributional.PolicyPPO(**kwargs)
-        self.value = networks.distributional.ValuePPO(**kwargs)
-        lrate_schedule = lambda it: max(0.995 ** it, 0.005)
-        
+        self.policy = networks.distributional.PPO(**kwargs)
         # setup optimizers
         actor_optimizer = kwargs.setdefault('actor_optimizer',torch.optim.Adam)
         actor_optimizer_lr = kwargs.get('actor_lr',config.actor_lr)
@@ -71,17 +92,11 @@ class PPOAgent():
         self.policy_optimizer = actor_optimizer(self.policy.parameters(),
                                                 lr=actor_optimizer_lr,
                                                 amsgrad=amsgrad)
+        lrate_schedule = lambda it: max(0.995 ** it, 0.5) #0.005)
         self.policy_scheduler = torch.optim.lr_scheduler.LambdaLR(self.policy_optimizer, lr_lambda=lrate_schedule)
-        critic_optimizer = kwargs.setdefault('critic_optimizer',torch.optim.Adam)
-        critic_optimizer_lr = kwargs.get('critic_lr',config.critic_lr)
-
-        self.value_optimizer = critic_optimizer(self.value.parameters(),
-                                                lr=critic_optimizer_lr,
-                                                amsgrad=amsgrad)
-        self.value_scheduler = torch.optim.lr_scheduler.LambdaLR(self.value_optimizer, lr_lambda=lrate_schedule)
-        # common training / playing parameters
         
-        self.max_frames_per_episode = config.max_frames_per_episode
+        # common training / playing parameters
+        self.max_frames_per_episode = kwargs.get('max_frames_per_episode',config.max_frames_per_episode)
         self.model_save_period = 500
         self.iteration = 0
         self.saved_iteration = 0
@@ -90,32 +105,36 @@ class PPOAgent():
         if not os.path.exists(self.model_save_dir):
             os.makedirs(self.model_save_dir)
         
-        self._tb_init()
+        self.tb_logging = kwargs.get('tb',config.tb)
+        if (self.tb_logging):
+            self._tb_init()
         
         self.tot_epochs = 0
         self.episodes = 0
         self.episodes_rewards = deque(maxlen=100)
 
-        self.policy_optimization_epochs = 15 #80  # 30
-        self.value_optimization_epochs = 10 #80 # 30
-        self.policy_sampling_ratio = self.value_sampling_ratio = 0.2
-        # self.policy_sampling_ratio = self.value_sampling_ratio = 0.5
-        self.ppo_early_stop = True
-        self.policy_stopping_kl = 1.5 # 2.5 #0.5 # 0.02
-        if (self.ppo_early_stop):
-            self.policy_stopping_kl_fn = lambda x: x> self.policy_stopping_kl
-        else:
-            self.policy_stopping_kl_fn = lambda x: False
-        self.value_stopping_mse = 10 # 0.5
-        self.policy_clip_range =  0.2
-        self.value_clip_range = float('inf')
-        self.gae_tau = 0.85 # 0.80 #0.85 # 0.90 # 0.98 # 0.97
-        self.beta = 0.0005 #0.2 # 0.001 #0.01
-        self.policy_gradient_clip = 2.0 # float('inf') #1.0
-        self.value_gradient_clip = float('inf')
+        self.policy_optimization_epochs = kwargs.get('policy_optimization_epochs', config.policy_optimization_epochs)
+        self.policy_stopping_kl = kwargs.get('policy_stopping_kl', config.policy_stopping_kl)
+        self.policy_sampling_ratio = 0.2
+        
+        self.policy_clip_range = kwargs.get('policy_clip_range', config.policy_clip_range)
+        self.gae_lambda = kwargs.get('gae_lambda', config.gae_lambda)
+        self.batch_size = kwargs.get('memory_batch_size', config.memory_batch_size)
+        self.entropy_coeff = kwargs.get('entropy_beta', config.entropy_beta)
+        self.vf_coeff = kwargs.get('vf_coeff', config.vf_coeff)
+        self.policy_gradient_clip = float('inf')
         self.start_random_steps = 0
         self.num_start_steps = 0
         self.min_policy_epochs = 5 #10
+        # tb tracking fields
+        self.tb_loss_value = 0.0
+        self.tb_loss_policy = 0.0
+        self.tb_loss_entropy = 0.0
+        self.tb_avg_return = 0.0
+        self.tb_traj_mean_value = 0.0
+        self.tb_policies_distance = 0.0
+        self.tb_avg_entropy = 0.0
+        self.tb_epi = 0 # epochs per iteration
 
     def _next_eps(self):
         """updates exploration factor"""
@@ -127,61 +146,50 @@ class PPOAgent():
 
         env = self.env
         env_info = env.reset(train_mode=True)[self.brain_name]
-        
+        states = env_info.vector_observations
         for _ in range(num_trajectories):
-            states = env_info.vector_observations
             self.start_random_steps += 1
-            actions, log_probs = self.policy.np_action(states, eps= 0.0) # self.eps)
+            values, actions, log_probs = self.policy.np_action(states, eps= 0.0) # self.eps)
 
-            values = self.value(states).detach()
             # send all actions to tne environment and collect observation
             env_info = env.step(actions)[self.brain_name]     
+            next_states = np.array(env_info.vector_observations)
             rewards = np.array(env_info.rewards)                      
             dones = np.array(env_info.local_done)
-            max_reached = env_info.max_reached 
-            # update the score (for each agent)
-            agent_scores += rewards                           
-            # check if any agents finished an episode
-            for i,d in enumerate(dones):
-                if d:
-                    self.episodes_rewards.append(agent_scores[i])
-                    agent_scores[i] = 0.0
-                    self.episodes += 1
-            horizon.append((states,actions,rewards,dones,log_probs,values))
-            # if np.any(max_reached) is True: env_info = env.reset(train_mode=True)[self.brain_name]
+            if (np.any(np.isnan(next_states)) or np.any(np.isnan(rewards)) or np.any(np.isnan(dones))) == False:
+                # update the score (for each agent)
+                agent_scores += rewards                           
+                # check if any agents finished an episode
+                for i,d in enumerate(dones):
+                    if d:
+                        self.episodes_rewards.append(agent_scores[i])
+                        agent_scores[i] = 0.0
+                        self.episodes += 1
+                horizon.append((states,actions,rewards,dones,log_probs,values))
+                states = next_states
         
         # decrease exploration ratio
         self._next_eps()
 
         # process horizon backwards for generalized advantage
 
-        next_values = self.value(states).detach().unsqueeze(-1)
-        # push next value at end of horizon
-        # trajectory = [None] * (len(trajectory_raw)-1)
-        # process raw trajectories
-        # calculate advantages and returns
+        next_values = self.policy.get_np_value(states)
+        next_v = torch.tensor(next_values, dtype=torch.float32)
         gae = torch.zeros(self.num_agents, 1).to(self.device)
-        # returns = next_values.detach()
-        next_v = next_values.detach()
-        trajectory = [None]*(num_trajectories)
+        trajectory = [None]*len(horizon)
         i = 0
         while (len(horizon) > 0):
             states,actions,rewards,dones,log_probs,values = horizon.pop()
             # turn np arrays into tensors
-            states, actions, rewards, dones, log_probs = map(
+            states, actions, rewards, dones, log_probs,values = map(
                 lambda x: torch.tensor(x).float().to(self.device),
-                (states, actions, rewards, dones, log_probs)
+                (states, actions, rewards, dones, log_probs, values)
             )
-            ongoing = (1-dones).unsqueeze(-1)
+            goes_on = (1-dones).unsqueeze(-1)
             rewards = rewards.unsqueeze(-1)
-            values = values.unsqueeze(-1)
-            delta = rewards + self.gamma*next_v*ongoing - values
-            gae = delta + self.gae_tau*self.gamma*ongoing*gae
+            delta = rewards + self.gamma*next_v*goes_on - values
+            gae = delta + self.gae_lambda*self.gamma*goes_on*gae
             returns = gae + values 
-            
-            # calculate advantage
-            #td_errors = rewards + self.gamma * ongoing * next_values - values
-            #gae = gae * self.gae_tau * self.gamma * ongoing + td_errors
 
             # store in trajectory list
             trajectory[i] = (states, actions, log_probs, returns, gae, values)
@@ -192,165 +200,152 @@ class PPOAgent():
         states, actions, old_log_probs, returns, gae, values = map(
             lambda x: torch.cat(x, dim=0), zip(*trajectory)
             )
+        # calculate and normalize advantage
         adv = returns - values
-        # normalize advantages
-        # return data for subsequent sampling
-        return states, actions, old_log_probs, returns, adv
+        adv = (adv - adv.mean())  / (adv.std() + 1.0e-6)
+        experiences_dict = {
+            'states': states,
+            'actions': actions,
+            'old_log_probs': old_log_probs,
+            'returns': returns,
+            'advantages': adv,
+            'state_values': values
+        }
+        return experiences_dict
 
     def train(self,**kwargs):
         self.training_iterations = kwargs.pop('training_iterations', config.training_iterations)
-        max_episodes = kwargs.setdefault('PPO_iterations',config.PPO_iterations)
+        max_frames = kwargs.setdefault('trajectories',config.trajectories)
         self.training_iterations += self.saved_iteration  # in case we are continuing training
 
         env = self.env
         scores = []                                 # list containing scores from each episode
         scores_window = deque(maxlen=100)           # last 100 scores
-        fpe_window = deque(maxlen=100)
         num_agents = self.num_agents
         agent_scores = np.zeros(num_agents)         # initialize the score (for each agent)
         
-        
-        
-        fpe = 0.0 # frames per episode
         prev_iteration = 0
-        save_counter = 0
         self.t_step = 0
         step = 0
         total_progress = tqdm(
                              total=self.training_iterations-self.iteration,
                              desc='step {}, epochs: {}, episodes: {}, mean score:{:3.2f},'.format(
-                                                    self.iteration, self.tot_epochs, self.episodes,self.mean_return))
+                                                    self.iteration, self.tot_epochs, self.episodes,self.tb_avg_return))
         
         solution_found = False
         solution = 2000
         prev_iteration = self.iteration
         self.min_ppo_epochs = 5
         while self.iteration < self.training_iterations:
-            all_states, all_actions, all_old_log_probs, all_returns, all_gae = self.collect_trajectories(max_episodes)
-            all_values = self.value(all_states).detach()
-            n_samples = len(all_returns)
-            # normalize returns
-            epoch = 0
-            
-            if self.iteration < 20:
-                self.beta = -0.001
-            else:
-                self.beta = 0 #0.01
-            # optimize value
-            for value_epochs in range(self.value_optimization_epochs):
-                # sample a batch
-                batch_size = int(self.value_sampling_ratio*n_samples)
-                idx = np.random.choice(n_samples, batch_size, replace=False)
-                states = all_states[idx]
-                returns = all_returns[idx].squeeze(-1)
-                values = all_values[idx]
-               
-                values_pred = self.value(states)
-
-                #values_pred_clipped = values + (values_pred - values).clamp(-self.value_clip_range, 
-                #                                                             self.value_clip_range)
-                # v_loss = (returns - values_pred).pow(2)
-                # v_loss_clipped = (returns - values_pred_clipped).pow(2)
-                value_loss = F.smooth_l1_loss(values_pred,returns)
-                
-                self.value_optimizer.zero_grad()
-                value_loss.backward()
-                nn.utils.clip_grad_norm_(self.value.parameters(), self.value_gradient_clip)
-                self.value_optimizer.step()
-                
-                with torch.no_grad():
-                    # check if we can break early
-                    val_pred_all = self.value(all_states)
-                    mse = (all_values - val_pred_all).pow(2).mul(0.5).mean()
-                    if mse.item() > self.value_stopping_mse:
-                        break
-            # store info for tensorboard after policy optimization epochs
-
-            # optimize policy
-            for policy_epochs in range(self.policy_optimization_epochs):
-                self.tot_epochs += 1
-                # sample a batch
-                with torch.no_grad():
-                    batch_size = int(self.policy_sampling_ratio*n_samples)
-                    idx = np.random.choice(n_samples, batch_size, replace=False)
-                    states = all_states[idx]
-                    actions = all_actions[idx]
-                    old_log_probs = all_old_log_probs[idx]
-                    returns = all_returns[idx]
-                    gae = all_gae[idx]
-                    gae = (gae - gae.mean())  / (gae.std() + 1.0e-6)
-                    # returns = (returns - returns.mean())  / (returns.std() + 1.0e-6)
-                    # gae = (gae - gae.mean())  / (gae.std() + 1.0e-6)
-                    
-                log_probs, entropy = self.policy.get_probs(states,actions)
-
-                # probability ratio
-                ratio = (log_probs - old_log_probs).exp()
-                ratio_clamped = ratio.clamp(1-self.policy_clip_range, 1+self.policy_clip_range)
-
-                policy_objective = gae*ratio
-                policy_objective_clamped = gae*ratio_clamped
-
-                policy_loss = -torch.min(policy_objective, policy_objective_clamped).mean()
-                entropy_loss = -entropy.mean()*self.beta #-entropy.mean()*self.beta
-
-                self.policy_optimizer.zero_grad()
-                (policy_loss+entropy_loss).backward()
-                nn.utils.clip_grad_norm_(self.policy.parameters(), self.policy_gradient_clip)
-                self.policy_optimizer.step()
-                epoch += 1
-                with torch.no_grad():
-                    # check if we can break early
-                    #if epoch > self.min_ppo_epochs:
-                    log_probs_all, _ = self.policy.get_probs(all_states, all_actions)
-                    kl = (all_old_log_probs - log_probs_all).mean()
-                    if (self.iteration > self.num_start_steps) and epoch >self.min_policy_epochs:     # added to ensure there is some harsh distr learning early
-                        if self.policy_stopping_kl_fn(kl.item()):
-                            break
-            # store info for tensorboard after policy optimization epochs
-            with torch.no_grad():
-                self.surrogate_loss = policy_objective.mean()
-                self.mean_loss_policy = policy_loss
-                self.mean_loss_entropy = entropy_loss
-                self.mean_entropy = entropy.mean()
-                self.kl_distance = kl.item()
-            
-            
-            
-            with torch.no_grad():
-                self.mean_loss_value = value_loss
-                self.value_mse = mse.item()
-                self.mean_value = val_pred_all.mean()
-                self.value_epochs = value_epochs
-                self.policy_epochs = policy_epochs
-                
+            observations = self.collect_trajectories(max_frames)
+            epochs, policy_loss, value_loss, entropy_loss, kl_distance, values_mean, entropy_mean = self._learn_step(observations)
+            # store values for tensorboard
+            self.tb_avg_return = np.mean(self.episodes_rewards)
+            self.tb_loss_value = value_loss
+            self.tb_loss_policy = policy_loss
+            self.tb_loss_entropy = entropy_loss
+            self.tb_traj_mean_value = values_mean
+            self.tb_policies_distance = kl_distance
+            self.tb_avg_entropy = entropy_mean
+            self.tb_epi = epochs # epochs per iteration
             # update progress bar
             if (self.iteration+1) % 1 == 0:
-                self.mean_return = np.mean(self.episodes_rewards)
                 total_progress.update(self.iteration-prev_iteration)
                 total_progress.set_description('step {:4d}, epochs: {:4d}, episodes: {:4d}, mean score:{:3.2f},'.format(
-                                                    self.iteration, self.tot_epochs, self.episodes, self.mean_return ))
+                                                    self.iteration, self.tot_epochs, self.episodes, self.tb_avg_return ))
                 prev_iteration = self.iteration
             self._next_iter()
-            self.value_scheduler.step()
-            self.policy_scheduler.step()   
+
+    def play(self, 
+            episodes=10,
+            max_frames_per_episode=1000,
+            **kwargs):
+        """plays an environment with model for requested episodes."""
+        buff = []
+        logging.info('Starting a Play session')
+        logging.info('Will run for %d episodes', episodes)
+        env_info = self.env.reset(train_mode=False)[self.brain_name]
+        num_agents = len(env_info.agents)
+        states = env_info.vector_observations
+        scores = [] # list containing scores from each episode
+        agent_scores = np.zeros(num_agents)
+        env_info = self.env.reset(train_mode=False)[self.brain_name]
+        while self.episodes < episodes:
+            # initialize the score (for each agent)
+            frames = 0            
+            states = env_info.vector_observations
+            #for steps in range(max_frames_per_episode):
+            actions = self.policy.np_deterministic_action(states) # self.eps)
+            # send all actions to tne environment and collect observation
+            env_info = self.env.step(actions)[self.brain_name]     
+            next_states = np.array(env_info.vector_observations)
+            rewards = np.array(env_info.rewards)                      
+            dones = np.array(env_info.local_done)
+            frames += 1
+            agent_scores += rewards
+            for i,d in enumerate(dones):
+                if d:
+                    self.episodes_rewards.append(agent_scores[i])
+                    self.episodes += 1
+                    print('Agent {} Episode {}\t \t Score: {:.2f}'
+                    .format(
+                        i,
+                        self.episodes,
+                        agent_scores[i]
+                    ))
+                    agent_scores[i] = 0.0
+
+            states = next_states
                 
-        
+        print('\rEpisodes: {}\t running mean score: {:.2f}'
+            .format(
+                self.episodes,
+                np.mean(self.episodes_rewards)))
 
-    def _learn_step(self):
-        states,actions,rewards,next_states,dones,old_probs = self.sample()
-        states = states.view(-1,self.ds).detach()
-        self.B = states.shape[0]
-        actions = actions.view(-1,self.da).detach()
-        rewards = rewards.view(-1,1).detach()
-        next_states = next_states.view(-1,self.ds).detach()
-        dones = dones.view(-1,1)
-
-
-        # normalize rewards
-        rewards_mean = np.mean(rewards_future, axis=1)
-        rewards_std = np.std(rewards_future, axis=1) + 1.0e-10
-        rewards_normalized = (rewards_future - mean[:,np.newaxis])/std[:,np.newaxis]
+    def _learn_step(self, observations_dict):
+        all_states = observations_dict['states']
+        all_actions = observations_dict['actions']
+        all_old_log_probs = observations_dict['old_log_probs']
+        all_returns = observations_dict['returns']
+        all_gae = observations_dict['advantages']
+        all_values = observations_dict['state_values']
+        n_samples = len(all_returns)
+        for policy_epochs in range(self.policy_optimization_epochs):
+            idx = np.random.choice(n_samples, self.batch_size, replace=False)
+            self.tot_epochs += 1
+            # sample a batch
+            with torch.no_grad():
+                states = all_states[idx]
+                actions = all_actions[idx]
+                old_log_probs = all_old_log_probs[idx]
+                returns = all_returns[idx]
+                values = all_values[idx]
+                gae = all_gae[idx]
+            # get new predictions   
+            values_pred, log_probs, entropy = self.policy.get_probs_and_value(states,actions)
+            # compute value loss
+            value_loss = F.smooth_l1_loss(values_pred, returns)
+            # compute policy loss
+            ratio = (log_probs - old_log_probs).exp()
+            policy_objective = gae*ratio
+            policy_objective_clamped = torch.where(gae > 0, (1+self.policy_clip_range) * gae, (1-self.policy_clip_range) * gae)
+            policy_loss = -torch.min(policy_objective, policy_objective_clamped).mean()
+            # compute entropy loss
+            entropy_loss = -entropy.mean()
+            # objective
+            ppo_objective = policy_loss + self.vf_coeff*value_loss + self.entropy_coeff*entropy_loss
+            # optimize PPO DNN
+            self.policy_optimizer.zero_grad()
+            ppo_objective.backward()
+            nn.utils.clip_grad_norm_(self.policy.parameters(), self.policy_gradient_clip)
+            self.policy_optimizer.step()
+            # check if we are deviating too much from old policy and stop early if needed
+            with torch.no_grad():
+                values, log_probs, _ = self.policy.get_probs_and_value(all_states,all_actions)
+                kl = (all_old_log_probs - log_probs).mean()
+                if kl > self.policy_stopping_kl: 
+                    break
+        return policy_epochs, policy_loss, value_loss, entropy_loss, kl.item(), values.mean(), entropy.mean()
 
     def save_model(self, path=None):
         """Saves the model."""
@@ -358,10 +353,9 @@ class PPOAgent():
             'iteration': self.iteration,
             'policy_state_dict': self.policy.state_dict(),
             'policy_optim_state_dict': self.policy_optimizer.state_dict(),
-            'value_state_dict': self.value.state_dict(),
-            'value_optim_state_dict': self.value_optimizer.state_dict()
         }
         torch.save(data, path)
+    
     def load_model(self, **kwargs):
             """loads a model from a given path."""
             load_path = kwargs.setdefault(
@@ -373,10 +367,7 @@ class PPOAgent():
             self.iteration += self.saved_iteration
             self.policy.load_state_dict(checkpoint['policy_state_dict'])
             self.policy_optimizer.load_state_dict(checkpoint['policy_optim_state_dict'])
-            self.value.load_state_dict(checkpoint['value_state_dict'])
-            self.value_optimizer.load_state_dict(checkpoint['value_optim_state_dict'])
             self.policy.train()
-            self.value.train()
             logging.info('Loaded model: {}'.format(load_path))
             logging.info('iteration: {}'.format(self.iteration))
 
@@ -387,44 +378,31 @@ class PPOAgent():
         if (self.iteration+1) % self.model_save_period ==0:
             self.save_model(os.path.join(self.model_save_dir, 'model_{:4d}.pt'.format(self.save_counter)))
             self.save_counter += 1
-        if (self.iteration+1) % self.tensorboard_update_period ==0:
+        if self.tb_logging and ((self.iteration+1) % self.tensorboard_update_period ==0):
             # save latest model
             self.save_model(os.path.join(self.model_save_dir, 'model_latest.pt'))
             # write to tb log
             self._tb_write()
+        # decrease LR
+        self.policy_scheduler.step()
         return self.iteration
     def _tb_init(self):
         ts = datetime.datetime.now().replace(microsecond=0).strftime("%Y%m%d_%H%M%S")
         self.writer = SummaryWriter(os.path.join(self.log_dir, 'tb',ts))
         self.tensorboard_update_period = 1
-        # tb tracking fields
-        self.mean_loss_value = 0.0
-        self.value_mse = 0.0
-        self.surrogate_loss = 0.0
-        self.mean_loss_policy = 0.0
-        self.mean_loss_value = 0.0
-        self.mean_loss_entropy = 0.0
-        self.mean_value = 0.0
-        self.kl_distance = 0.0
-        self.mean_return = 0.0
-        self.mean_entropy = 0.0
-        self.value_epochs = 0
-        self.policy_epochs = 0
         return
 
     def _tb_write(self):
         """Writes training data to tensorboard summary writer. Should be overloaded by sub-classes."""
         it = self.iteration
         # tb tracking fields
-        self.writer.add_scalar('loss/clipped_surrogate', self.surrogate_loss, it)
-        self.writer.add_scalar('loss/policy', self.mean_loss_policy, it)
-        self.writer.add_scalar('loss/value', self.mean_loss_value, it)
-        self.writer.add_scalar('loss/entropy', self.mean_loss_entropy, it)
-        self.writer.add_scalar('value mse', self.value_mse,it)
-        self.writer.add_scalar('mean/ return', self.mean_return, it)
-        self.writer.add_scalar('mean/entropy', self.mean_entropy, it)
-        self.writer.add_scalar('policies kl distance', self.kl_distance, it)
-        self.writer.add_scalar('mean/trajectories value', self.mean_value, it)
-        self.writer.add_scalar('epochs/value', self.value_epochs, it)
-        self.writer.add_scalar('epochs/policy', self.policy_epochs, it)
+        self.writer.add_scalar('loss/policy', self.tb_loss_policy, it)
+        self.writer.add_scalar('loss/value', self.tb_loss_value, it)
+        self.writer.add_scalar('loss/entropy', self.tb_loss_entropy, it)
+
+        self.writer.add_scalar('mean/ return', self.tb_avg_return, it)
+        self.writer.add_scalar('mean/entropy', self.tb_avg_entropy, it)
+        self.writer.add_scalar('policies kl distance', self.tb_policies_distance, it)
+        self.writer.add_scalar('mean/trajectories value', self.tb_traj_mean_value, it)
+        self.writer.add_scalar('epochs', self.tb_epi, it)
         self.writer.flush()

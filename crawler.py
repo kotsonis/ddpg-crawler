@@ -4,9 +4,7 @@ from absl import logging
 from absl import flags
 
 from unityagents import UnityEnvironment
-from agents.spdg import SDPGAgent
 from agents.ppo import PPOAgent
-from utils import replay
 
 config = flags.FLAGS
 flags.DEFINE_string(name='device', default='cpu',
@@ -32,7 +30,7 @@ def main(argv):
     logging.get_absl_handler().use_absl_log_file()
     logging.set_verbosity('info')
     # modify some parameters of training
-    env = UnityEnvironment(file_name=config.env, worker_id = 3, no_graphics=config.render)
+    env = UnityEnvironment(file_name=config.env, worker_id = 1, no_graphics=config.render)
     model = PPOAgent(device=config.device,env=env)
     # model = SDPGAgent(device=config.device,env=env, replay_buffer_class=replay.MultiAgentPriorityReplay)
     if config.load is not None:
