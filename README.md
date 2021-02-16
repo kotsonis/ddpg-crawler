@@ -38,7 +38,7 @@ Create (and activate) a new environment with Python 3.6.
 
 ```shell
 	git clone https://github.com/kotsonis/ddpg-crawler.git
-	cd ddpg-reacher
+	cd ddpg-crawler
 	pip install -r requirements.txt
 ```
 
