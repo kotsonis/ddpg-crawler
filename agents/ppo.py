@@ -22,26 +22,7 @@ flags.DEFINE_string(name='load_model',default='./model/model_saved.pt',
     help='saved agent model to load')
 flags.DEFINE_integer(name='training_iterations',default=1000,
     help='number of agent/env interactions to perform')
-flags.DEFINE_float(name='gamma',default=0.99,
-    help='discount factor for future rewards (0,1]')
-flags.DEFINE_integer(name='trajectories',default=2048,
-    help='number of trajectories to sample per iteration')
-flags.DEFINE_integer(name='policy_optimization_epochs', default=160,
-    help='number of epochs to run (K in paper)')
-flags.DEFINE_float(name='policy_stopping_kl', default=0.3,
-    help='log KL divergence to early stop PPO improvements')
-flags.DEFINE_float(name='policy_clip_range', default=0.2,
-    help='clipping threshold for PPO policy optimization')
-flags.DEFINE_float(name='gae_lambda', default=0.85,
-    help='lambda coefficient for generalized advantage estimate')
-flags.DEFINE_float(name='entropy_beta', default=0.002,
-    help='coefficient to multiply beta loss in PPO step')
-flags.DEFINE_float(name='vf_coeff', default=0.01,
-    help='coefficient to multiply value loss in PPO step')
-flags.DEFINE_integer(name='memory_batch_size',default=128,
-    help='batch size of memory samples per epoch')
-flags.DEFINE_bool(name='tb', default=True,
-    help='enable tensorboard logging')
+
 class PPOAgent():
     """PPO Agent """
     def __init__(
