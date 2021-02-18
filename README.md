@@ -40,6 +40,7 @@ Create (and activate) a new environment with Python 3.6.
 	git clone https://github.com/kotsonis/ddpg-crawler.git
 	cd ddpg-crawler
 	pip install -r requirements.txt
+	pip install tensorflow==1.15
 ```
 
 ### Install Crawler environment

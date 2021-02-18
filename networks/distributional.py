@@ -107,8 +107,8 @@ class PPO(nn.Module):
         # rescale action to action bounds
         action = self.rescale_fn(tanh_action)
         # get log probability and rescale to action bounds
-        log_prob = policy.log_prob(pre_tanh_action) - torch.log(
-            (1-tanh_action.pow(2)).clamp(0,1) + epsilon)
+        log_prob = policy.log_prob(pre_tanh_action)
+        #- torch.log((1-tanh_action.pow(2)).clamp(0,1) + epsilon)
         # multiply the probs of each action dimension (sum the log_probs)
         log_prob = log_prob.sum(-1).unsqueeze(-1)
         return value, action, log_prob, self.rescale_fn(torch.tanh(mean))
@@ -146,8 +146,8 @@ class PPO(nn.Module):
         # convert action back to pre-tanh value
         pre_tanh_action = torch.atanh(action)
 
-        log_prob = policy.log_prob(pre_tanh_action) - torch.log(
-            (1-action.pow(2)).clamp(0,1) + 1e-6)
+        log_prob = policy.log_prob(pre_tanh_action)
+        #- torch.log((1-action.pow(2)).clamp(0,1) + 1e-6)
 
         log_prob = log_prob.sum(-1).unsqueeze(-1)
         entropy = policy.entropy().unsqueeze(-1)

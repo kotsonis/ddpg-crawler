@@ -11,15 +11,9 @@
             "program":"crawler.py",
             "console":"integratedTerminal",
             "args": ["--train", 
-                     "--log_dir", "log_ppo_optim",
-                     "--trajectories", "2048",
-                     "--policy_optimization_epochs", "160",
-                     "--entropy_beta", "0.002",
-                     "--vf_coeff", "0.05",
+                     "--log_dir", "log_ppo",
                      "--training_iterations", "1000",
-                     "--memory_batch_size", "512",
-                     "--actor_lr", "8e-5",
-                     "--gamma", "0.995"
+                    
                      ]
         },
         {
@@ -29,13 +23,10 @@
             "program":"crawler.py",
             "console":"integratedTerminal",
             "args": ["--train", 
-                     "--load", "./working_models_bckup/210214_model_1150.pt",
-                     "--log_dir", "log_ppo_optim",
-                     "--trajectories", "2048",
-                     "--training_iterations", "300",
+                     "--load", "./log_ppo/model/model_latest.pt",
+                     "--log_dir", "log_ppo",
+                     "--training_iterations", "1000",
                      "--actor_lr", "8e-5",
-                     "--memory_batch_size", "512",
-                     "--gamma", "0.995"
                      ]
         },
         {
@@ -47,8 +38,8 @@
             "args":["--play", 
                 "--log_dir", "log_ppo",
                 "--notb",
-                "--episodes", "20", 
-                "--load", "./model/model_saved.pt"],
+                "--episodes", "100", 
+                "--load", "./log_ppo/model/model_latest.pt"],
         },
         {
             "name": "Run current file",
