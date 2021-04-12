@@ -1,17 +1,14 @@
 
 
-[//]: # (Image References)
-
-[image1]: https://user-images.githubusercontent.com/10624937/43851646-d899bf20-9b00-11e8-858c-29b5c2c94ccc.png "Crawler"
 
 # ddpg-crawler
-A PPO RL solution to the Unity-ML(Udacity) [Crawler](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Learning-Environment-Examples.md#crawler) environment. 
+A PPO Reinforcement learning solution to the Unity-ML(Udacity) [Crawler](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Learning-Environment-Examples.md#crawler) environment. 
 
 ## Introduction
 
 ## The Environment
 
-![Trained Agent][image1]
+![Trained Agent](images/crawler_trained_agent.gif)
 
 Crawler is a creature with 4 arms and 4 forearms, which needs to learn how to stand and walk forward without falling. The environment has 12 agents, and each one controls the target rotations for joints and heads of a cralwer through 20 continous actions.
 
